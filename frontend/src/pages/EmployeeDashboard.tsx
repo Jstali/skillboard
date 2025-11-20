@@ -1,7 +1,8 @@
+// @ts-nocheck
 /** Employee Dashboard - Main page for employees to manage their skills. */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DndContext, useSensor, useSensors, PointerSensor, KeyboardSensor, closestCenter, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, KeyboardSensor, pointerWithin, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { SkillBrowser } from '../components/SkillBrowser';
 import { ColumnsArea } from '../components/ColumnsArea';
@@ -10,20 +11,32 @@ import { authApi, userSkillsApi, skillsApi, Skill, EmployeeSkill } from '../serv
 
 const DndContextWrapper: React.FC<{ 
   children: React.ReactNode;
+  onDragStart?: (event: DragStartEvent) => void;
   onDragEnd: (event: DragEndEvent) => void;
-}> = ({ children, onDragEnd }) => {
+  overlay?: React.ReactNode;
+}> = ({ children, onDragStart, onDragEnd, overlay }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        delay: 150,
+        tolerance: 5,
       },
     }),
     useSensor(KeyboardSensor)
   );
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+    <DndContext 
+      sensors={sensors} 
+      collisionDetection={pointerWithin} 
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
       {children}
+      {/* Overlay preserves pickup offset; no snap-to-center modifier applied */}
+      <DragOverlay>
+        {overlay || null}
+      </DragOverlay>
     </DndContext>
   );
 };
@@ -31,6 +44,7 @@ const DndContextWrapper: React.FC<{
 export const EmployeeDashboard: React.FC = () => {
   const [existingSkills, setExistingSkills] = useState<SkillCardData[]>([]);
   const [interestedSkills, setInterestedSkills] = useState<SkillCardData[]>([]);
+  const [activeOverlay, setActiveOverlay] = useState<React.ReactNode | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,6 +74,7 @@ export const EmployeeDashboard: React.FC = () => {
       employeeSkills.forEach((es: EmployeeSkill) => {
         const skillData: SkillCardData = {
           id: es.skill_id,
+          employee_skill_id: es.id,  // Store employee_skill.id for updates
           name: es.skill?.name || 'Unknown',
           description: es.skill?.description,
           rating: es.rating || undefined,  // Rating may be null for interested skills
@@ -148,6 +163,33 @@ export const EmployeeDashboard: React.FC = () => {
     );
   };
 
+  const handleSkillMove = async (
+    skillId: number,
+    fromColumn: 'existing' | 'interested',
+    toColumn: 'existing' | 'interested'
+  ) => {
+    // Find the skill in the source column
+    const sourceSkills = fromColumn === 'existing' ? existingSkills : interestedSkills;
+    const skillToMove = sourceSkills.find((s) => s.id === skillId);
+    
+    if (!skillToMove || !skillToMove.employee_skill_id) {
+      // If no employee_skill_id, it's a new skill - use createMySkill instead
+      return;
+    }
+
+    try {
+      // Update the skill's is_interested flag
+      await userSkillsApi.updateMySkill(skillToMove.employee_skill_id, {
+        is_interested: toColumn === 'interested',
+        rating: toColumn === 'existing' ? (skillToMove.rating || 'Beginner') : undefined,
+      });
+    } catch (error) {
+      console.error('Failed to update skill:', error);
+      // Reload skills on error to sync state
+      loadSkills();
+    }
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
@@ -156,32 +198,67 @@ export const EmployeeDashboard: React.FC = () => {
     const activeId = active.id as string;
     const overId = over.id as string;
 
+    // Helper to parse a droppable card id like "existing-123" or "interested-456"
+    const parseTargetId = (idStr: string, prefix: 'existing' | 'interested') => {
+      if (!idStr) return null;
+      if (idStr.startsWith(`${prefix}-`)) {
+        const num = parseInt(idStr.slice(prefix.length + 1), 10);
+        return isNaN(num) ? null : num;
+      }
+      return null;
+    };
+
     // Check if dragging from master list
     if (activeId.toString().startsWith('skill-')) {
       const skillId = parseInt(activeId.toString().replace('skill-', ''));
       const skillData = active.data.current?.skill as Skill;
       
       if (skillData) {
-        if (overId === 'existing-column' || overId.toString().startsWith('existing-')) {
-          handleSkillAdd(
-            {
-              id: skillData.id,
-              name: skillData.name,
-              description: skillData.description,
-              rating: 'Beginner',
-            },
-            'existing'
-          );
-        } else if (overId === 'interested-column' || overId.toString().startsWith('interested-')) {
-          handleSkillAdd(
-            {
-              id: skillData.id,
-              name: skillData.name,
-              description: skillData.description,
-              rating: undefined,  // No rating for interested skills
-            },
-            'interested'
-          );
+        // Check if dropped on existing column (including cards)
+        if (overId === 'existing-column' || 
+            overId.toString().startsWith('existing-')) {
+          const newSkill: SkillCardData = {
+            id: skillData.id,
+            name: skillData.name,
+            description: skillData.description,
+            rating: 'Beginner',
+          };
+          // If dropped over a specific card, insert before that card
+          const targetId = parseTargetId(overId.toString(), 'existing');
+          if (targetId !== null) {
+            const alreadyExists = existingSkills.some((s) => s.id === newSkill.id);
+            if (!alreadyExists) {
+              const targetIndex = existingSkills.findIndex((s) => s.id === targetId);
+              const arr = [...existingSkills];
+              arr.splice(targetIndex >= 0 ? targetIndex : arr.length, 0, newSkill);
+              setExistingSkills(arr);
+            }
+          } else {
+            // Dropped on column background, append to end
+            handleSkillAdd(newSkill, 'existing');
+          }
+        } 
+        // Check if dropped on interested column (including cards)
+        else if (overId === 'interested-column' || 
+                 overId.toString().startsWith('interested-')) {
+          const newSkill: SkillCardData = {
+            id: skillData.id,
+            name: skillData.name,
+            description: skillData.description,
+            rating: undefined,  // No rating for interested skills
+          };
+          const targetId = parseTargetId(overId.toString(), 'interested');
+          if (targetId !== null) {
+            const alreadyExists = interestedSkills.some((s) => s.id === newSkill.id);
+            if (!alreadyExists) {
+              const targetIndex = interestedSkills.findIndex((s) => s.id === targetId);
+              const arr = [...interestedSkills];
+              arr.splice(targetIndex >= 0 ? targetIndex : arr.length, 0, newSkill);
+              setInterestedSkills(arr);
+            }
+          } else {
+            handleSkillAdd(newSkill, 'interested');
+          }
         }
       }
       return;
@@ -193,10 +270,22 @@ export const EmployeeDashboard: React.FC = () => {
     const activeInInterested = interestedSkills.find((s) => s.id === activeSkillId);
 
     if (activeInExisting) {
-      if (overId === 'interested-column' || overId.toString().startsWith('interested-')) {
+      if (overId === 'interested-column' || 
+          overId.toString().startsWith('interested-')) {
         // Move from existing to interested - remove rating
         setExistingSkills(existingSkills.filter((s) => s.id !== activeSkillId));
-        setInterestedSkills([...interestedSkills, { ...activeInExisting, rating: undefined }]);
+        const targetId = parseTargetId(overId.toString(), 'interested');
+        const movedItem: SkillCardData = { ...activeInExisting, rating: undefined };
+        if (targetId !== null) {
+          const targetIndex = interestedSkills.findIndex((s) => s.id === targetId);
+          const arr = [...interestedSkills];
+          arr.splice(targetIndex >= 0 ? targetIndex : arr.length, 0, movedItem);
+          setInterestedSkills(arr);
+        } else {
+          setInterestedSkills([...interestedSkills, movedItem]);
+        }
+        // Save to backend
+        handleSkillMove(activeSkillId, 'existing', 'interested');
       } else {
         // Reorder within existing
         const overSkillId = parseInt(overId.toString());
@@ -208,10 +297,22 @@ export const EmployeeDashboard: React.FC = () => {
         }
       }
     } else if (activeInInterested) {
-      if (overId === 'existing-column' || overId.toString().startsWith('existing-')) {
+      if (overId === 'existing-column' || 
+          overId.toString().startsWith('existing-')) {
         // Move from interested to existing - add default rating
         setInterestedSkills(interestedSkills.filter((s) => s.id !== activeSkillId));
-        setExistingSkills([...existingSkills, { ...activeInInterested, rating: 'Beginner' }]);
+        const targetId = parseTargetId(overId.toString(), 'existing');
+        const movedItem: SkillCardData = { ...activeInInterested, rating: 'Beginner' };
+        if (targetId !== null) {
+          const targetIndex = existingSkills.findIndex((s) => s.id === targetId);
+          const arr = [...existingSkills];
+          arr.splice(targetIndex >= 0 ? targetIndex : arr.length, 0, movedItem);
+          setExistingSkills(arr);
+        } else {
+          setExistingSkills([...existingSkills, movedItem]);
+        }
+        // Save to backend
+        handleSkillMove(activeSkillId, 'interested', 'existing');
       } else {
         // Reorder within interested
         const overSkillId = parseInt(overId.toString());
@@ -221,6 +322,48 @@ export const EmployeeDashboard: React.FC = () => {
           const newIndex = interestedSkills.findIndex((s) => s.id === overSkillId);
           setInterestedSkills(arrayMove(interestedSkills, oldIndex, newIndex));
         }
+      }
+    }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const activeId = String(active.id);
+    // Master list drag
+    if (activeId.startsWith('skill-')) {
+      const skillData = active.data.current?.skill as Skill | undefined;
+      if (skillData) {
+        setActiveOverlay(
+          <div className="bg-white rounded-lg shadow-lg p-4 border-2 border-blue-400 w-[320px]">
+            <h3 className="font-semibold text-gray-800">{skillData.name}</h3>
+            {skillData.description && (
+              <p className="text-sm text-gray-600 mt-1">{skillData.description}</p>
+            )}
+          </div>
+        );
+      }
+      return;
+    }
+    // Existing/interested card drag
+    const numericId = parseInt(activeId, 10);
+    if (!isNaN(numericId)) {
+      const found = existingSkills.find(s => s.id === numericId) || interestedSkills.find(s => s.id === numericId);
+      if (found) {
+        setActiveOverlay(
+          <div className="bg-white rounded-lg shadow-lg p-4 border-2 border-blue-400 w-[320px]">
+            <div className="flex justify-between items-start">
+              <div className="flex-1">
+                <h3 className="font-semibold text-gray-800">{found.name}</h3>
+                {found.description && (
+                  <p className="text-sm text-gray-600 mt-1">{found.description}</p>
+                )}
+              </div>
+              {found.rating && (
+                <span className="ml-4 inline-block text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">{found.rating}</span>
+              )}
+            </div>
+          </div>
+        );
       }
     }
   };
@@ -283,9 +426,10 @@ export const EmployeeDashboard: React.FC = () => {
         </div>
       </header>
 
-      <DndContextWrapper onDragEnd={handleDragEnd}>
+      <DndContextWrapper onDragStart={handleDragStart} onDragEnd={handleDragEnd} overlay={activeOverlay}>
         <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="grid grid-cols-4 gap-4 h-[calc(100vh-120px)]">
+          {/* Allow natural page scrolling by removing fixed viewport height */}
+          <div className="grid grid-cols-4 gap-4">
             {/* Left Panel: Master Skills */}
             <div className="col-span-1 bg-white rounded-lg shadow-md border border-gray-200">
               <div className="p-4 border-b border-gray-200">

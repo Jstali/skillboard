@@ -1,11 +1,13 @@
 /** Skill card component for drag-and-drop. */
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
+import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { RatingPicker } from './RatingPicker';
 
 export interface SkillCardData {
-  id: number;
+  id: number;  // skill_id
+  employee_skill_id?: number;  // employee_skill.id for updates
   name: string;
   description?: string;
   rating?: 'Beginner' | 'Developing' | 'Intermediate' | 'Advanced' | 'Expert';
@@ -34,6 +36,17 @@ export const SkillCard: React.FC<SkillCardProps> = ({
     isDragging,
   } = useSortable({ id: skill.id });
 
+  // Also make this card a droppable target for skills from master list
+  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
+    id: `${columnType}-${skill.id}`,
+  });
+
+  // Combine both refs
+  const combinedRef = (node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    setDroppableRef(node);
+  };
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -48,14 +61,14 @@ export const SkillCard: React.FC<SkillCardProps> = ({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={combinedRef}
       style={style}
       {...attributes}
       {...listeners}
       className={`
         bg-white rounded-lg shadow-md p-4 mb-2 cursor-grab active:cursor-grabbing
-        border-2 border-gray-200 hover:border-blue-400 transition-colors
-        ${isDragging ? 'shadow-lg' : ''}
+        border-2 transition-colors
+        ${isDragging ? 'shadow-lg border-blue-400' : isOver ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-400'}
       `}
       role="button"
       tabIndex={0}

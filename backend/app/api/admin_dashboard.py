@@ -1,6 +1,7 @@
 """API routes for admin/HR dashboard."""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List, Optional
 from app.db import database, crud
 from app.schemas import Employee, EmployeeSkill, Skill
@@ -26,6 +27,261 @@ def get_all_employees(
     
     employees = query.offset(skip).limit(limit).all()
     return employees
+
+
+from pydantic import BaseModel
+
+class SkillRatingCriteria(BaseModel):
+    skill_name: str
+    rating: Optional[str] = None
+
+class MultiSkillSearchRequest(BaseModel):
+    criteria: List[SkillRatingCriteria]
+
+@router.post("/employees/search")
+def search_employees_by_skill(
+    request: MultiSkillSearchRequest,
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """
+    Search for employees by multiple skill-rating criteria (admin/HR only).
+    
+    Accepts multiple skill-rating pairs. Returns employees who match ALL criteria.
+    Each criterion can have:
+    - skill_name: Required - uses fuzzy matching with partial word support
+    - rating: Optional - includes ±1 level flexibility (e.g., Intermediate shows Advanced & Developing)
+    
+    Example:
+    {
+      "criteria": [
+        {"skill_name": "Python", "rating": "Advanced"},
+        {"skill_name": "JavaScript", "rating": "Intermediate"}
+      ]
+    }
+    """
+    from app.db.models import RatingEnum
+    from rapidfuzz import process, fuzz
+    from collections import defaultdict
+    
+    if not request.criteria or len(request.criteria) == 0:
+        return {
+            "total_results": 0,
+            "employees": [],
+        }
+    
+    # Get all skills for fuzzy matching
+    all_skills = crud.get_all_skills(db, skip=0, limit=10000)
+    skill_names = [skill.name for skill in all_skills]
+    
+    # Process each criterion to find matching skills
+    criteria_matches = []  # List of {skill_ids, rating_filter, match_scores_map}
+    
+    for criterion in request.criteria:
+        skill_name = criterion.skill_name.strip().lower()
+        rating = criterion.rating.strip().capitalize() if criterion.rating else None
+        
+        # Find matching skills using fuzzy matching
+        matched_skills_with_scores = {}
+        
+        if skill_names:
+            # Use multiple scoring methods for better partial word matching
+            matches_token_sort = process.extract(
+                skill_name, skill_names, scorer=fuzz.token_sort_ratio, limit=50
+            )
+            matches_partial = process.extract(
+                skill_name, skill_names, scorer=fuzz.partial_ratio, limit=50
+            )
+            matches_token_set = process.extract(
+                skill_name, skill_names, scorer=fuzz.token_set_ratio, limit=50
+            )
+            
+            # Combine all matches
+            all_matches = {}
+            for skill_name_match, score, _ in matches_token_sort + matches_partial + matches_token_set:
+                skill_lower = skill_name_match.lower()
+                search_words = skill_name.split()
+                word_match = any(word in skill_lower for word in search_words)
+                
+                current_score = all_matches.get(skill_name_match, 0)
+                boosted_score = score
+                if word_match and score < 60:
+                    boosted_score = max(score, 60)
+                
+                all_matches[skill_name_match] = max(current_score, boosted_score)
+            
+            matched_skills_with_scores = {
+                skill_name_match: score 
+                for skill_name_match, score in all_matches.items()
+                if score >= 50
+            }
+        
+        if not matched_skills_with_scores:
+            # No matches for this criterion - skip it or return empty?
+            continue
+        
+        # Get skill IDs for matched skills
+        matched_skill_ids = [
+            skill.id for skill in all_skills 
+            if skill.name in matched_skills_with_scores
+        ]
+        
+        # Process rating filter
+        allowed_ratings = None
+        rating_enum = None
+        if rating:
+            try:
+                rating_enum = RatingEnum(rating)
+                rating_order = {
+                    RatingEnum.BEGINNER: 1,
+                    RatingEnum.DEVELOPING: 2,
+                    RatingEnum.INTERMEDIATE: 3,
+                    RatingEnum.ADVANCED: 4,
+                    RatingEnum.EXPERT: 5,
+                }
+                required_order = rating_order.get(rating_enum, 0)
+                allowed_ratings = [
+                    r_enum for r_enum, order in rating_order.items()
+                    if abs(order - required_order) <= 1
+                ]
+            except ValueError:
+                continue  # Skip invalid rating
+        
+        criteria_matches.append({
+            "skill_ids": matched_skill_ids,
+            "allowed_ratings": allowed_ratings,
+            "required_rating": rating_enum,
+            "match_scores": matched_skills_with_scores,
+        })
+    
+    if not criteria_matches:
+        return {
+            "total_results": 0,
+            "employees": [],
+        }
+    
+    # Get all employees with their skills
+    all_employee_skills = (
+        db.query(EmployeeModel, EmployeeSkillModel, SkillModel)
+        .join(EmployeeSkillModel, EmployeeModel.id == EmployeeSkillModel.employee_id)
+        .join(SkillModel, EmployeeSkillModel.skill_id == SkillModel.id)
+        .filter(EmployeeSkillModel.is_interested == False)
+        .filter(EmployeeSkillModel.rating.isnot(None))
+        .all()
+    )
+    
+    # Group by employee and check criteria matches
+    employee_skills_map = defaultdict(lambda: {
+        "employee": None,
+        "skills": []
+    })
+    
+    for employee, employee_skill, skill in all_employee_skills:
+        emp_id = employee.employee_id
+        if employee_skills_map[emp_id]["employee"] is None:
+            employee_skills_map[emp_id]["employee"] = employee
+        employee_skills_map[emp_id]["skills"].append({
+            "skill_id": skill.id,
+            "skill_name": skill.name,
+            "skill_category": skill.category,
+            "rating": employee_skill.rating,
+            "years_experience": employee_skill.years_experience,
+        })
+    
+    # Check each employee against all criteria
+    result_list = []
+    for emp_id, emp_data in employee_skills_map.items():
+        employee = emp_data["employee"]
+        employee_skills = emp_data["skills"]
+        
+        # Check how many criteria this employee matches
+        matched_criteria = []
+        total_criteria_score = 0
+        
+        for criterion_idx, criterion in enumerate(criteria_matches):
+            # Find if employee has any skill matching this criterion
+            best_match = None
+            best_score = 0
+            
+            for emp_skill in employee_skills:
+                if emp_skill["skill_id"] in criterion["skill_ids"]:
+                    # Check rating if required
+                    if criterion["allowed_ratings"]:
+                        if emp_skill["rating"] not in criterion["allowed_ratings"]:
+                            continue
+                    
+                    # Calculate match score
+                    skill_name = emp_skill["skill_name"]
+                    skill_match_score = criterion["match_scores"].get(skill_name, 100)
+                    
+                    # Adjust for rating match
+                    rating_boost = 0
+                    if criterion["required_rating"] and emp_skill["rating"]:
+                        rating_order = {
+                            RatingEnum.BEGINNER: 1,
+                            RatingEnum.DEVELOPING: 2,
+                            RatingEnum.INTERMEDIATE: 3,
+                            RatingEnum.ADVANCED: 4,
+                            RatingEnum.EXPERT: 5,
+                        }
+                        required_order = rating_order.get(criterion["required_rating"], 0)
+                        actual_order = rating_order.get(emp_skill["rating"], 0)
+                        
+                        if actual_order == required_order:
+                            rating_boost = 10
+                        elif abs(actual_order - required_order) == 1:
+                            rating_boost = 0
+                    
+                    final_score = min(100, skill_match_score + rating_boost)
+                    
+                    if final_score > best_score:
+                        best_score = final_score
+                        best_match = {
+                            "skill_id": emp_skill["skill_id"],
+                            "skill_name": emp_skill["skill_name"],
+                            "skill_category": emp_skill["skill_category"],
+                            "rating": emp_skill["rating"].value if emp_skill["rating"] else None,
+                            "years_experience": emp_skill["years_experience"],
+                            "match_score": round(final_score, 2),
+                            "criterion_index": criterion_idx,
+                        }
+            
+            if best_match:
+                matched_criteria.append(best_match)
+                total_criteria_score += best_score
+        
+        # Only include employees who match at least one criterion
+        if matched_criteria:
+            # Calculate overall match percentage
+            match_percentage = total_criteria_score / len(criteria_matches) if criteria_matches else 0
+            
+            result_list.append({
+                "employee": {
+                    "id": employee.id,
+                    "employee_id": employee.employee_id,
+                    "name": employee.name,
+                    "first_name": employee.first_name,
+                    "last_name": employee.last_name,
+                    "company_email": employee.company_email,
+                    "department": employee.department,
+                    "role": employee.role,
+                    "team": employee.team,
+                    "band": employee.band,
+                    "category": employee.category,
+                },
+                "matching_skills": matched_criteria,
+                "match_count": len(matched_criteria),
+                "criteria_count": len(criteria_matches),
+                "match_percentage": round(match_percentage, 2),
+            })
+    
+    # Sort by match percentage (descending), then by number of matching criteria
+    result_list.sort(key=lambda x: (x["match_percentage"], x["match_count"]), reverse=True)
+    
+    return {
+        "total_results": len(result_list),
+        "employees": result_list,
+    }
 
 
 @router.get("/employees/{employee_id}/skills", response_model=List[EmployeeSkill])

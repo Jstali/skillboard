@@ -405,5 +405,26 @@ export const adminDashboardApi = {
     const response = await api.get<DashboardStats>('/api/admin/dashboard/stats');
     return response.data;
   },
+  searchEmployeesBySkill: async (criteria: Array<{skill_name: string, rating?: string}>): Promise<{
+    total_results: number;
+    employees: Array<{
+      employee: Employee;
+      matching_skills: Array<{
+        skill_id: number;
+        skill_name: string;
+        skill_category?: string;
+        rating: string | null;
+        years_experience?: number;
+        match_score?: number;
+        criterion_index?: number;
+      }>;
+      match_count: number;
+      criteria_count: number;
+      match_percentage: number;
+    }>;
+  }> => {
+    const response = await api.post('/api/admin/employees/search', { criteria });
+    return response.data;
+  },
 };
 

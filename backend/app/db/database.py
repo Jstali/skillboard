@@ -193,39 +193,49 @@ def init_db():
                 conn.execute(text("ALTER TABLE skills ADD COLUMN category VARCHAR(100)"))
             
             # Update ratingenum enum type to include new values (Developing and Expert)
-            # PostgreSQL enum types need to be updated to include new values
+            # Note: Since native_enum=False is used in models, this is stored as VARCHAR, not a PostgreSQL enum
+            # However, if a PostgreSQL enum type exists (from previous migrations), we should update it
             try:
-                # Check current enum values
+                # First check if the enum type exists
                 result = conn.execute(text("""
-                    SELECT enumlabel 
-                    FROM pg_enum 
-                    WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'ratingenum')
-                    ORDER BY enumsortorder
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_type WHERE typname = 'ratingenum'
+                    )
                 """))
-                enum_values = [row[0] for row in result.fetchall()]
+                enum_exists = result.fetchone()[0]
                 
-                # Add 'Developing' if it doesn't exist
-                if 'Developing' not in enum_values:
-                    try:
-                        conn.execute(text("ALTER TYPE ratingenum ADD VALUE 'Developing'"))
-                    except Exception as e:
-                        # Value might already exist or enum doesn't exist yet
-                        import logging
-                        logging.warning(f"Could not add Developing to ratingenum (may already exist): {e}")
-                
-                # Add 'Expert' if it doesn't exist
-                if 'Expert' not in enum_values:
-                    try:
-                        conn.execute(text("ALTER TYPE ratingenum ADD VALUE 'Expert'"))
-                    except Exception as e:
-                        # Value might already exist or enum doesn't exist yet
-                        import logging
-                        logging.warning(f"Could not add Expert to ratingenum (may already exist): {e}")
+                if enum_exists:
+                    # Check current enum values
+                    result = conn.execute(text("""
+                        SELECT enumlabel 
+                        FROM pg_enum 
+                        WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'ratingenum')
+                        ORDER BY enumsortorder
+                    """))
+                    enum_values = [row[0] for row in result.fetchall()]
+                    
+                    # Add 'Developing' if it doesn't exist
+                    if 'Developing' not in enum_values:
+                        try:
+                            conn.execute(text("ALTER TYPE ratingenum ADD VALUE 'Developing'"))
+                        except Exception as e:
+                            # Value might already exist
+                            import logging
+                            logging.warning(f"Could not add Developing to ratingenum (may already exist): {e}")
+                    
+                    # Add 'Expert' if it doesn't exist
+                    if 'Expert' not in enum_values:
+                        try:
+                            conn.execute(text("ALTER TYPE ratingenum ADD VALUE 'Expert'"))
+                        except Exception as e:
+                            # Value might already exist
+                            import logging
+                            logging.warning(f"Could not add Expert to ratingenum (may already exist): {e}")
             except Exception as e:
-                # Enum type might not exist yet (will be created by SQLAlchemy)
+                # Enum type might not exist (which is fine with native_enum=False)
                 # Or there's another issue - log but don't fail
                 import logging
-                logging.warning(f"Could not check/update ratingenum (may not exist yet): {e}")
+                logging.warning(f"Could not check/update ratingenum (may not exist, which is fine): {e}")
             
             # Check if users table exists, if not it will be created by Base.metadata.create_all above
             # But we can verify and add any missing columns

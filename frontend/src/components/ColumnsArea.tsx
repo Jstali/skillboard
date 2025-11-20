@@ -67,7 +67,7 @@ const SortableColumn: React.FC<{
     <div
       ref={setNodeRef}
       className={`
-        bg-gray-50 rounded-lg p-4 border-2 border-dashed
+        bg-gray-50 rounded-lg p-4 border-2 border-dashed min-h-[400px]
         ${isOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300'}
         transition-colors
       `}
@@ -75,11 +75,15 @@ const SortableColumn: React.FC<{
       <h2 className="text-lg font-semibold mb-4 text-gray-700">
         {title} ({skills.length})
       </h2>
-      <div className="overflow-y-auto max-h-[calc(100vh-200px)]">
+      {/* Let the list grow naturally without an internal scrollbar */}
+      <div className="min-h-[300px] space-y-2">
         <SortableContext items={skillIds} strategy={verticalListSortingStrategy}>
           {skills.length === 0 ? (
-            <div className="text-center text-gray-400 py-8">
-              Drop skills here
+            <div className="text-center text-gray-400 py-8 min-h-[200px] flex items-center justify-center">
+              <div>
+                <p className="text-lg mb-2">Drop skills here</p>
+                <p className="text-sm">Drag from the skill list on the left</p>
+              </div>
             </div>
           ) : (
             skills.map((skill) => (

@@ -23,6 +23,12 @@ export const AdminDashboard: React.FC = () => {
   const [uploadingSkills, setUploadingSkills] = useState(false);
   const [skillsUploadResult, setSkillsUploadResult] = useState<UploadResponse | null>(null);
   const [uploadError, setUploadError] = useState<string>('');
+  const [searchCriteria, setSearchCriteria] = useState<Array<{skill_name: string, rating: string}>>([
+    { skill_name: '', rating: '' }
+  ]);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearchMode, setIsSearchMode] = useState(false);
+  const [searching, setSearching] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
@@ -103,6 +109,66 @@ export const AdminDashboard: React.FC = () => {
       console.error('Failed to load skill categories:', error);
       setSkillCategories([]);
     }
+  };
+
+  const handleSkillSearch = async () => {
+    // Filter out empty criteria
+    const validCriteria = searchCriteria.filter(
+      c => c.skill_name.trim() !== ''
+    ).map(c => ({
+      skill_name: c.skill_name.trim(),
+      rating: c.rating || undefined
+    }));
+
+    if (validCriteria.length === 0) {
+      // Reset to normal view if no valid criteria
+      setIsSearchMode(false);
+      setSearchResults([]);
+      loadDashboardData();
+      return;
+    }
+
+    setSearching(true);
+    setIsSearchMode(true);
+    try {
+      const results = await adminDashboardApi.searchEmployeesBySkill(validCriteria);
+      setSearchResults(results.employees);
+    } catch (error) {
+      console.error('Failed to search employees:', error);
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchCriteria([{ skill_name: '', rating: '' }]);
+    setIsSearchMode(false);
+    setSearchResults([]);
+    loadDashboardData();
+  };
+
+  const addCriterion = () => {
+    setSearchCriteria([...searchCriteria, { skill_name: '', rating: '' }]);
+  };
+
+  const removeCriterion = (index: number) => {
+    if (searchCriteria.length > 1) {
+      setSearchCriteria(searchCriteria.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateCriterion = (index: number, field: 'skill_name' | 'rating', value: string) => {
+    const updated = [...searchCriteria];
+    updated[index] = { ...updated[index], [field]: value };
+    setSearchCriteria(updated);
+  };
+
+  const getMatchColor = (percentage: number) => {
+    if (percentage >= 90) return 'bg-green-500';
+    if (percentage >= 75) return 'bg-blue-500';
+    if (percentage >= 60) return 'bg-yellow-500';
+    return 'bg-orange-500';
   };
 
   const handleLogout = () => {
@@ -275,6 +341,87 @@ export const AdminDashboard: React.FC = () => {
         {/* Employees Tab */}
         {activeTab === 'employees' && (
           <div>
+            {/* Skill-based Search Section */}
+            <div className="mb-6 bg-blue-50 rounded-lg p-4 border border-blue-200">
+              <h3 className="text-lg font-semibold mb-3 text-gray-800">Search Employees by Multiple Skills & Ratings</h3>
+             
+              
+              <div className="space-y-3">
+                {searchCriteria.map((criterion, index) => (
+                  <div key={index} className="flex gap-3 items-end flex-wrap bg-white p-3 rounded-lg border border-gray-200">
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Skill Name {searchCriteria.length > 1 && `#${index + 1}`}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g., policy, audit, python..."
+                        value={criterion.skill_name}
+                        onChange={(e) => updateCriterion(index, 'skill_name', e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSkillSearch()}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="min-w-[180px]">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Rating Level</label>
+                      <select
+                        value={criterion.rating}
+                        onChange={(e) => updateCriterion(index, 'rating', e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="">All Ratings</option>
+                        <option value="Beginner">Beginner</option>
+                        <option value="Developing">Developing</option>
+                        <option value="Intermediate">Intermediate</option>
+                        <option value="Advanced">Advanced</option>
+                        <option value="Expert">Expert</option>
+                      </select>
+                    </div>
+                    {searchCriteria.length > 1 && (
+                      <button
+                        onClick={() => removeCriterion(index)}
+                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium"
+                        title="Remove this criterion"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+                
+                <div className="flex gap-2 items-center">
+                  <button
+                    onClick={addCriterion}
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium text-sm"
+                  >
+                    + Add Another Skill
+                  </button>
+                  <button
+                    onClick={handleSkillSearch}
+                    disabled={searching}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  >
+                    {searching ? 'Searching...' : 'Search'}
+                  </button>
+                  {isSearchMode && (
+                    <button
+                      onClick={handleClearSearch}
+                      className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 font-medium"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              {isSearchMode && (
+                <div className="mt-3 text-sm text-gray-600">
+                  Found {searchResults.length} employee{searchResults.length !== 1 ? 's' : ''} matching {searchResults[0]?.criteria_count || searchCriteria.filter(c => c.skill_name.trim()).length} criteria
+                </div>
+              )}
+            </div>
+
+            {/* Regular Search/Filter Section */}
             <div className="mb-4 flex gap-4 items-center flex-wrap">
               <div className="flex-1 min-w-[200px]">
                 <input
@@ -295,7 +442,93 @@ export const AdminDashboard: React.FC = () => {
                 />
               </div>
             </div>
-            {loading ? (
+            {searching ? (
+              <div className="text-center py-8 text-gray-500">Searching employees...</div>
+            ) : isSearchMode ? (
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match %</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Matching Skills</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {searchResults
+                      .filter((result) => {
+                        if (employeeSearchQuery) {
+                          const query = employeeSearchQuery.toLowerCase();
+                          const emp = result.employee;
+                          return (
+                            emp.name?.toLowerCase().includes(query) ||
+                            emp.company_email?.toLowerCase().includes(query) ||
+                            emp.employee_id?.toLowerCase().includes(query) ||
+                            emp.department?.toLowerCase().includes(query) ||
+                            emp.role?.toLowerCase().includes(query)
+                          );
+                        }
+                        return true;
+                      })
+                      .map((result) => {
+                        const emp = result.employee;
+                        return (
+                          <tr key={emp.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="w-24 bg-gray-200 rounded-full h-2.5 mr-2">
+                                  <div
+                                    className={`h-2.5 rounded-full ${getMatchColor(result.match_percentage)}`}
+                                    style={{ width: `${result.match_percentage}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-sm font-medium text-gray-900">{result.match_percentage}%</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{emp.employee_id}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{emp.name}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.company_email || '-'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.department || '-'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              <div className="space-y-1">
+                                <div className="text-xs text-gray-400 mb-1">
+                                  Matched {result.match_count} of {result.criteria_count} criteria
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {result.matching_skills.map((skill, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800"
+                                      title={`${skill.skill_name} - ${skill.rating} (${skill.match_score}% match)`}
+                                    >
+                                      {skill.skill_name} ({skill.rating})
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                              <button
+                                onClick={() => handleViewEmployeeSkills(emp.employee_id)}
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                View Skills
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+                {searchResults.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">No employees found matching your search criteria.</div>
+                )}
+              </div>
+            ) : loading ? (
               <div className="text-center py-8 text-gray-500">Loading employees...</div>
             ) : (
               <div className="bg-white rounded-lg shadow overflow-hidden">

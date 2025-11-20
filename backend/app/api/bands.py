@@ -33,7 +33,16 @@ BAND_THRESHOLDS = {
     "B": (1.5, 2.5),
     "C": (2.5, 3.5),
     "L1": (3.5, 4.5),
-    "L2": (4.5, 5.0),
+    "L2": (4.5, 5.1),  # Include 5.0 in L2 range
+}
+
+# Default required ratings for each band when no specific requirement is defined
+BAND_DEFAULT_RATINGS = {
+    "A": RatingEnum.BEGINNER,      # 1
+    "B": RatingEnum.DEVELOPING,    # 2
+    "C": RatingEnum.INTERMEDIATE,   # 3
+    "L1": RatingEnum.ADVANCED,     # 4
+    "L2": RatingEnum.EXPERT,       # 5
 }
 
 
@@ -45,7 +54,7 @@ def calculate_band(average_rating: float) -> str:
     # Default to A if below threshold
     if average_rating < 1.0:
         return "A"
-    # Default to L2 if above threshold
+    # Default to L2 if above threshold (5.0 or higher)
     return "L2"
 
 
@@ -218,9 +227,11 @@ def get_employee_band_analysis(
             else:
                 skills_below += 1
         else:
-            # No requirement defined - use Intermediate (3) as default
-            required_rating_num = 3
-            required_rating_text = "Intermediate"
+            # No requirement defined - use band's default requirement
+            # L1 defaults to Advanced (4), L2 defaults to Expert (5)
+            default_rating = BAND_DEFAULT_RATINGS.get(band, RatingEnum.INTERMEDIATE)
+            required_rating_num = RATING_TO_NUMBER[default_rating]
+            required_rating_text = default_rating.value
             gap = (current_rating_num or 0) - required_rating_num
             
             if gap > 0:
