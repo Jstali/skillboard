@@ -9,6 +9,7 @@ import { AdminUsers } from './pages/AdminUsers';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { SkillGapBoard } from './pages/SkillGapBoard';
 import { PrivateRoute } from './components/PrivateRoute';
+import { authApi } from './services/api';
 
 function App() {
   return (
@@ -56,7 +57,14 @@ function App() {
             </PrivateRoute>
           }
         />
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route
+          path="/"
+          element={(() => {
+            const user = authApi.getUser();
+            const to = user?.is_admin ? '/admin/dashboard' : '/dashboard';
+            return <Navigate to={to} replace />;
+          })()}
+        />
       </Routes>
     </BrowserRouter>
   );

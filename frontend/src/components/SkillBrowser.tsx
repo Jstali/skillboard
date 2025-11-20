@@ -24,9 +24,8 @@ export const SkillBrowser: React.FC<SkillBrowserProps> = ({ searchQuery, exclude
       const data = await skillsApi.getAll();
       setSkills(data);
       setError(null);
-      // Auto-expand all categories on load
-      const categories = new Set(data.map(s => s.category || 'Uncategorized'));
-      setExpandedCategories(categories);
+      // Keep categories collapsed by default
+      setExpandedCategories(new Set());
     } catch (err) {
       setError('Failed to load skills');
       console.error(err);
@@ -98,7 +97,7 @@ export const SkillBrowser: React.FC<SkillBrowserProps> = ({ searchQuery, exclude
   const categories = Object.keys(skillsByCategory).sort();
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full max-h-[70vh] overflow-y-auto no-scrollbar">
       <div className="p-4">
         <h2 className="text-lg font-semibold mb-4 text-gray-700">
           Master Skills ({filteredSkills.length})

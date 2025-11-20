@@ -8,6 +8,7 @@ import { SkillBrowser } from '../components/SkillBrowser';
 import { ColumnsArea } from '../components/ColumnsArea';
 import { SkillCardData } from '../components/SkillCard';
 import { authApi, userSkillsApi, skillsApi, Skill, EmployeeSkill } from '../services/api';
+import NxzenLogo from '../images/Nxzen.jpg';
 
 const DndContextWrapper: React.FC<{ 
   children: React.ReactNode;
@@ -375,7 +376,7 @@ export const EmployeeDashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-[#F6F2F4] flex items-center justify-center">
         <div className="text-center">
           <div className="text-xl text-gray-600">Loading your skills...</div>
         </div>
@@ -384,30 +385,64 @@ export const EmployeeDashboard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-800">Skillboard - My Skills</h1>
-          <div className="flex gap-2 items-center">
-            <span className="text-sm text-gray-600">{user?.email}</span>
+    <div className="min-h-screen bg-[#F6F2F4]">
+      <header className="bg-[#F6F2F4] shadow-sm border-b border-gray-200">
+        <div className="w-full px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <img src={NxzenLogo} alt="Nxzen" className="h-8 w-8 object-cover" />
+            <span className="text-xl font-semibold text-gray-800">nxzen</span>
+            <span aria-hidden className="h-6 w-px bg-gray-300" />
+            <h1 className="text-2xl font-bold text-gray-800 italic">Skillboard - My Skills</h1>
+            <div className="ml-6 flex items-center gap-2">
+              {user?.is_admin && (
+                <button
+                  onClick={() => navigate('/admin/dashboard')}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  Admin Dashboard
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-200">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-gray-700">
+                <path fillRule="evenodd" d="M12 2a5 5 0 100 10 5 5 0 000-10zm-7 18a7 7 0 1114 0H5z" clipRule="evenodd" />
+              </svg>
+              <div className="text-sm font-medium text-gray-800">
+                {((user as any)?.first_name && (user as any)?.last_name)
+                  ? `${(user as any).first_name} ${(user as any).last_name}`
+                  : (user?.name || (user?.email ? user.email.split('@')[0] : 'User'))}
+              <br />
+              <span className="text-xs text-gray-500">{user?.email}</span>
+               </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              title="Logout"
+              className="p-2 rounded-lg hover:bg-gray-200"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-red-600">
+                <path d="M16 13v-2H7V8l-5 4 5 4v-3h9zm3-11H9c-1.1 0-2 .9-2 2v3h2V4h10v16H9v-2H7v3c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <DndContextWrapper onDragStart={handleDragStart} onDragEnd={handleDragEnd} overlay={activeOverlay}>
+        <div className="max-w-[1400px] mx-auto px-6 py-6">
+          <div className="flex justify-end items-center gap-2 mb-4">
             <button
               onClick={() => navigate('/skill-gap')}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              className="px-4 py-2 bg-[#8DE971] text-gray rounded-lg hover:bg-[#8DE971]-700 transition-colors"
             >
               Skill Gap Analysis
             </button>
-            {user?.is_admin && (
-              <button
-                onClick={() => navigate('/admin/dashboard')}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-              >
-                Admin Dashboard
-              </button>
-            )}
             <button
               onClick={saveSkills}
               disabled={saving}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-[#030304] text-white rounded-lg hover:bg-[#030304]-700 transition-colors disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
@@ -416,22 +451,11 @@ export const EmployeeDashboard: React.FC = () => {
                 {saveMessage}
               </span>
             )}
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              Logout
-            </button>
           </div>
-        </div>
-      </header>
-
-      <DndContextWrapper onDragStart={handleDragStart} onDragEnd={handleDragEnd} overlay={activeOverlay}>
-        <div className="max-w-7xl mx-auto px-4 py-6">
           {/* Allow natural page scrolling by removing fixed viewport height */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-9 gap-6">
             {/* Left Panel: Master Skills */}
-            <div className="col-span-1 bg-white rounded-lg shadow-md border border-gray-200">
+            <div className="col-span-3 bg-[#F6F2F4] rounded-lg shadow-md border border-gray-200">
               <div className="p-4 border-b border-gray-200">
                 <input
                   type="text"
@@ -451,7 +475,7 @@ export const EmployeeDashboard: React.FC = () => {
             </div>
 
             {/* Right Area: Two Columns */}
-            <div className="col-span-3">
+            <div className="col-span-6">
               <ColumnsArea
                 existingSkills={existingSkills}
                 interestedSkills={interestedSkills}

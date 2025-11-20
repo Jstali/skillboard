@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../services/api';
+import BgImage from '../images/Media.jpeg';
 
 export const Register: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -55,107 +56,118 @@ export const Register: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+    <div
+      className="min-h-screen w-full relative flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8"
+      style={{
+        backgroundImage: `url(${BgImage})`,
+        backgroundSize: 'cover',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center',
+      }}
+    >
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative z-10 w-full max-w-md">
+        <div className="backdrop-blur rounded-xl shadow-xl p-8">
+          <h2 className="text-center text-2xl font-bold text-white">
             Create your account
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Or{' '}
-            <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
-              sign in to your existing account
-            </Link>
-          </p>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="rounded-md bg-red-50 p-4">
-              <div className="text-sm text-red-800">{error}</div>
-            </div>
-          )}
-          <div className="space-y-4">
+          
+
+          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+            {error && (
+              <div className="rounded-md bg-red-50 p-4">
+                <div className="text-sm text-red-800">{error}</div>
+              </div>
+            )}
+            <div className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email address
+              <label htmlFor="email" className="block text-sm font-medium text-white">
+                Email address <span className="text-red-500">*</span>
               </label>
               <input
                 id="email"
                 name="email"
                 type="email"
                 autoComplete="email"
+                placeholder='you@example.com'
                 required
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="mt-3 block w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                 value={formData.email}
                 onChange={handleChange}
               />
             </div>
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
+              <label htmlFor="password" className="block text-sm font-medium text-white">
+                Password <span className="text-red-500">*</span>
               </label>
               <input
                 id="password"
                 name="password"
                 type="password"
                 autoComplete="new-password"
+                placeholder='Enter password'
                 required
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="mt-3 block w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                 value={formData.password}
                 onChange={handleChange}
               />
             </div>
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                Confirm Password
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-white">
+                Confirm Password <span className="text-red-500">*</span>
               </label>
               <input
                 id="confirmPassword"
                 name="confirmPassword"
                 type="password"
                 autoComplete="new-password"
+                placeholder='Confirm password'
                 required
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="mt-3 block w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                 value={formData.confirmPassword}
                 onChange={handleChange}
               />
             </div>
             <div>
-              <label htmlFor="employee_id" className="block text-sm font-medium text-gray-700">
-                Employee ID (optional)
+              <label htmlFor="employee_id" className="block text-sm font-medium text-white">
+                Employee ID <span className="text-red-500">*</span>
               </label>
               <input
                 id="employee_id"
                 name="employee_id"
                 type="text"
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                placeholder='Enter employee ID'
+                className="mt-3 block w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                 value={formData.employee_id}
                 onChange={handleChange}
+                required
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="first_name" className="block text-sm font-medium text-gray-700">
-                  First Name (optional)
+                <label htmlFor="first_name" className="block text-sm font-medium text-white">
+                  First Name
                 </label>
                 <input
                   id="first_name"
                   name="first_name"
                   type="text"
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder='Enter first name'
+                  className="mt-3 block w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                   value={formData.first_name}
                   onChange={handleChange}
                 />
               </div>
               <div>
-                <label htmlFor="last_name" className="block text-sm font-medium text-gray-700">
-                  Last Name (optional)
+                <label htmlFor="last_name" className="block text-sm font-medium text-white">
+                  Last Name
                 </label>
                 <input
                   id="last_name"
                   name="last_name"
                   type="text"
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder='Enter last name'
+                  className="mt-3 block w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                   value={formData.last_name}
                   onChange={handleChange}
                 />
@@ -163,16 +175,23 @@ export const Register: React.FC = () => {
             </div>
           </div>
 
-          <div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Creating account...' : 'Create account'}
-            </button>
-          </div>
-        </form>
+            <div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Creating account...' : 'Create account'}
+              </button>
+            </div>
+            <p className="mt-2 text-center text-sm text-white">
+            Or{' '} 
+            <Link to="/login" className="font-medium text-green-600 hover:text-green-500">
+              sign in to your existing account
+            </Link>
+          </p>
+          </form>
+        </div>
       </div>
     </div>
   );

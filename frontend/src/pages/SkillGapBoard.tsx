@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, bandsApi, BandAnalysis, SkillGap } from '../services/api';
+import NxzenLogo from '../images/Nxzen.jpg';
 
 
 export const SkillGapBoard: React.FC = () => {
@@ -70,7 +71,7 @@ export const SkillGapBoard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-[#F6F2F4] flex items-center justify-center">
         <div className="text-center">
           <div className="text-xl text-gray-600">Loading skill gap analysis...</div>
         </div>
@@ -80,7 +81,7 @@ export const SkillGapBoard: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-[#F6F2F4] flex items-center justify-center">
         <div className="text-center">
           <div className="text-xl text-red-600 mb-4">Error: {error}</div>
           <button
@@ -96,7 +97,7 @@ export const SkillGapBoard: React.FC = () => {
 
   if (!analysis) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-[#F6F2F4] flex items-center justify-center">
         <div className="text-center">
           <div className="text-xl text-gray-600">No analysis data available</div>
         </div>
@@ -105,31 +106,52 @@ export const SkillGapBoard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-800">Skill Gap Analysis</h1>
-          <div className="flex gap-2 items-center">
-            <span className="text-sm text-gray-600">{user?.email}</span>
+    <div className="min-h-screen bg-[#F6F2F4]">
+      <header className="bg-[#F6F2F4] shadow-sm border-b border-gray-200">
+        <div className="w-full px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <img src={NxzenLogo} alt="Nxzen" className="h-8 w-8 object-cover" />
+            <span className="text-xl font-semibold text-gray-800">nxzen</span>
+            <span aria-hidden className="h-6 w-px bg-gray-300" />
+            <h1 className="text-2xl font-bold text-gray-800 italic">Skill Gap Analysis</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-200">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-gray-700">
+                <path fillRule="evenodd" d="M12 2a5 5 0 100 10 5 5 0 000-10zm-7 18a7 7 0 1114 0H5z" clipRule="evenodd" />
+              </svg>
+              <div className="text-sm font-medium text-gray-800">
+                {((user as any)?.first_name && (user as any)?.last_name)
+                  ? `${(user as any).first_name} ${(user as any).last_name}`
+                  : (user?.name || (user?.email ? user.email.split('@')[0] : 'User'))}
+               <br />
+              <span className="text-xs text-gray-500">{user?.email}</span>
+            </div>
+             </div>
             <button
-              onClick={() => navigate('/dashboard')}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              onClick={() => { authApi.logout(); navigate('/login'); }}
+              title="Logout"
+              className="p-2 rounded-lg hover:bg-gray-200"
             >
-              Back to Dashboard
-            </button>
-            <button
-              onClick={() => authApi.logout() && navigate('/login')}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Logout
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-red-600">
+                <path d="M16 13v-2H7V8l-5 4 5 4v-3h9zm3-11H9c-1.1 0-2 .9-2 2v3h2V4h10v16H9v-2H7v3c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+              </svg>
             </button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="max-w-6xl mx-auto px-6 py-6">
+        <div className="flex justify-end items-center mb-4">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="px-4 py-2 bg-[#AD96DC] text-white rounded-lg hover:bg-[#AD96DC]-700 transition-colors"
+          >
+           Back to Dashboard
+          </button>
+        </div>
         {/* Summary Card */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="bg-[#F6F2F4] rounded-lg shadow-md p-6 mb-6">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
               <div className="text-sm text-gray-600">Employee</div>
@@ -191,7 +213,7 @@ export const SkillGapBoard: React.FC = () => {
         </div>
 
         {/* Skill Gap Table */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="bg-[#F6F2F4] rounded-lg shadow-md overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-green-50">

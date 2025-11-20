@@ -14,6 +14,7 @@ export const AdminUsers: React.FC = () => {
   const navigate = useNavigate();
 
   const user = authApi.getUser();
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const handleUsersUpload = async () => {
     if (!usersFile) {
@@ -61,24 +62,48 @@ export const AdminUsers: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow-sm border-b border-gray-200">
+    <div className="min-h-screen bg-[#F6F2F4]">
+      <header className="bg-[#F6F2F4] shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-800">Admin - User Management</h1>
-          <div className="flex gap-2 items-center">
-            <span className="text-sm text-gray-600">{user?.email}</span>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-800">Admin - User Management</h1>
+            <div className="ml-6 flex items-center gap-2">
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Dashboard
+              </button>
+            </div>
+          </div>
+          <div className="relative flex items-center">
             <button
-              onClick={() => navigate('/dashboard')}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              onClick={() => setProfileOpen(!profileOpen)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-200"
             >
-              Dashboard
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-gray-700">
+                <path fillRule="evenodd" d="M12 2a5 5 0 100 10 5 5 0 000-10zm-7 18a7 7 0 1114 0H5z" clipRule="evenodd" />
+              </svg>
+              <span className="text-sm font-medium text-gray-800">
+                {((user as any)?.first_name && (user as any)?.last_name)
+                  ? `${(user as any).first_name} ${(user as any).last_name}`
+                  : (user?.employee_id || (user?.email ? user.email.split('@')[0] : 'User'))}
+              </span>
+              <span className="text-xs text-gray-500">({user?.email})</span>
             </button>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-            >
-              Logout
-            </button>
+            {profileOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-red-600">
+                    <path d="M16 13v-2H7V8l-5 4 5 4v-3h9zm3-11H9c-1.1 0-2 .9-2 2v3h2V4h10v16H9v-2H7v3c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+                  </svg>
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -92,7 +117,7 @@ export const AdminUsers: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Users Import */}
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="bg-[#F6F2F4] rounded-lg shadow-md p-6">
             <h2 className="text-xl font-semibold mb-4">Import Users</h2>
             <p className="text-sm text-gray-600 mb-4">
               Upload a CSV file with columns: employee_id, first_name, last_name, company_email, department, role

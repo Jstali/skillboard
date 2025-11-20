@@ -44,7 +44,7 @@ export const OnboardingMapSkills: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-[#F6F2F4] flex items-center justify-center">
         <div className="text-center">
           <div className="text-xl text-gray-600">Loading your skills...</div>
         </div>
@@ -53,7 +53,7 @@ export const OnboardingMapSkills: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center py-12 px-4">
+    <div className="min-h-screen bg-[#F6F2F4] flex items-center justify-center py-12 px-4">
       <div className="max-w-4xl w-full bg-white rounded-lg shadow-lg p-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-4">Welcome to Skillboard!</h1>
         <p className="text-gray-600 mb-6">

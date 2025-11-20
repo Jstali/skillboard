@@ -29,7 +29,7 @@ export const ColumnsArea: React.FC<ColumnsAreaProps> = ({
   // Use DndContext from parent (App component)
   // This component now just handles the drag end logic
   return (
-    <div className="grid grid-cols-2 gap-4 h-full">
+    <div className="grid grid-cols-2 gap-6 h-full">
       {/* Existing Skills Column */}
       <SortableColumn
         id="existing-column"
@@ -63,6 +63,13 @@ const SortableColumn: React.FC<{
 
   const skillIds = skills.map((s) => s.id);
 
+  const listRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  }, [skills]);
+
   return (
     <div
       ref={setNodeRef}
@@ -72,11 +79,23 @@ const SortableColumn: React.FC<{
         transition-colors
       `}
     >
-      <h2 className="text-lg font-semibold mb-4 text-gray-700">
+      <h2 className="text-lg font-semibold mb-2 text-gray-700">
         {title} ({skills.length})
       </h2>
-      {/* Let the list grow naturally without an internal scrollbar */}
-      <div className="min-h-[300px] space-y-2">
+      {columnType === 'existing' && (
+        <div className="mb-3 bg-white border border-gray-200 rounded-lg p-3">
+          <div className="text-xs font-semibold text-gray-700 mb-2">Legend</div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="px-2 py-1 rounded bg-green-100 text-green-800 border border-green-300">B (Beginners)</span>
+            <span className="px-2 py-1 rounded bg-blue-100 text-blue-800 border border-blue-300">D (Developing)</span>
+            <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-800 border border-yellow-300">I (Intermediate)</span>
+            <span className="px-2 py-1 rounded bg-orange-100 text-orange-800 border border-orange-300">A (Advance)</span>
+            <span className="px-2 py-1 rounded bg-purple-100 text-purple-800 border border-purple-300">E (Expert)</span>
+          </div>
+        </div>
+      )}
+      {/* Scrollable list of cards */}
+      <div ref={listRef} className="min-h-[300px] max-h-[60vh] overflow-y-auto no-scrollbar space-y-2 pb-8 pr-2">
         <SortableContext items={skillIds} strategy={verticalListSortingStrategy}>
           {skills.length === 0 ? (
             <div className="text-center text-gray-400 py-8 min-h-[200px] flex items-center justify-center">
