@@ -10,6 +10,8 @@ export const SkillGapBoard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'below' | 'at' | 'above'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
   const navigate = useNavigate();
   const user = authApi.getUser();
 
@@ -62,12 +64,32 @@ export const SkillGapBoard: React.FC = () => {
     }
   };
 
-  const filteredGaps = analysis?.skill_gaps.filter((gap) => {
+  const filteredGaps = analysis?.skill_gaps.filter((gap: SkillGap) => {
     if (filter === 'below') return gap.gap < 0;
     if (filter === 'at') return gap.gap === 0;
     if (filter === 'above') return gap.gap > 0;
     return true;
   }) || [];
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredGaps.length / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const paginatedGaps = filteredGaps.slice(startIndex, endIndex);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleRowsPerPageChange = (newRowsPerPage: number) => {
+    setRowsPerPage(newRowsPerPage);
+    setCurrentPage(1); // Reset to first page when changing rows per page
+  };
 
   if (loading) {
     return (
@@ -123,7 +145,7 @@ export const SkillGapBoard: React.FC = () => {
               <div className="text-sm font-medium text-gray-800">
                 {((user as any)?.first_name && (user as any)?.last_name)
                   ? `${(user as any).first_name} ${(user as any).last_name}`
-                  : (user?.name || (user?.email ? user.email.split('@')[0] : 'User'))}
+                  : (user?.email ? user.email.split('@')[0] : 'User')}
                <br />
               <span className="text-xs text-gray-500">{user?.email}</span>
             </div>
@@ -212,6 +234,30 @@ export const SkillGapBoard: React.FC = () => {
           </button>
         </div>
 
+        {/* Rows per page selector */}
+        <div className="mb-4 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <label htmlFor="rowsPerPage" className="text-sm text-gray-700">
+              Rows per page:
+            </label>
+            <select
+              id="rowsPerPage"
+              value={rowsPerPage}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleRowsPerPageChange(Number(e.target.value))}
+              className="px-3 py-1 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <span className="text-sm text-gray-600">
+              Showing {startIndex + 1} to {Math.min(endIndex, filteredGaps.length)} of {filteredGaps.length} skills
+            </span>
+          </div>
+        </div>
+
         {/* Skill Gap Table */}
         <div className="bg-[#F6F2F4] rounded-lg shadow-md overflow-hidden">
           <div className="overflow-x-auto">
@@ -239,14 +285,14 @@ export const SkillGapBoard: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredGaps.length === 0 ? (
+                {paginatedGaps.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                       No skills found for the selected filter.
                     </td>
                   </tr>
                 ) : (
-                  filteredGaps.map((gap) => (
+                  paginatedGaps.map((gap: SkillGap) => (
                     <tr key={gap.skill_id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap bg-black text-white font-medium">
                         {gap.skill_name}
@@ -284,6 +330,76 @@ export const SkillGapBoard: React.FC = () => {
             </table>
           </div>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              Page {currentPage} of {totalPages}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  currentPage === 1
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                }`}
+              >
+                Previous
+              </button>
+              
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                  // Show first page, last page, current page, and pages around current
+                  if (
+                    page === 1 ||
+                    page === totalPages ||
+                    (page >= currentPage - 1 && page <= currentPage + 1)
+                  ) {
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => handlePageChange(page)}
+                        className={`px-3 py-2 rounded-lg transition-colors ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    );
+                  } else if (
+                    page === currentPage - 2 ||
+                    page === currentPage + 2
+                  ) {
+                    return (
+                      <span key={page} className="px-2 text-gray-500">
+                        ...
+                      </span>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  currentPage === totalPages
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                }`}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

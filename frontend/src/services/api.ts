@@ -366,6 +366,10 @@ export const bandsApi = {
     const response = await api.get<BandAnalysis>('/api/bands/me/analysis');
     return response.data;
   },
+  getAllEmployeesAnalysis: async (): Promise<BandAnalysis[]> => {
+    const response = await api.get<BandAnalysis[]>('/api/bands/all/analysis');
+    return response.data;
+  },
   getEmployeeAnalysis: async (employeeId: string): Promise<BandAnalysis> => {
     const response = await api.get<BandAnalysis>(`/api/bands/employee/${employeeId}/analysis`);
     return response.data;

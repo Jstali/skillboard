@@ -2,11 +2,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { authApi, adminDashboardApi, adminApi, categoriesApi, Employee, EmployeeSkill, SkillOverview, SkillImprovement, DashboardStats, UploadResponse } from '../services/api';
+import { authApi, adminDashboardApi, adminApi, categoriesApi, bandsApi, Employee, EmployeeSkill, SkillOverview, SkillImprovement, DashboardStats, UploadResponse, BandAnalysis } from '../services/api';
 import NxzenLogo from '../images/Nxzen.jpg';
 
 export const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'skills' | 'improvements'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'skills' | 'improvements' | 'skill-gap'>('overview');
+  const [allEmployeesAnalysis, setAllEmployeesAnalysis] = useState<BandAnalysis[]>([]);
+  const [loadingSkillGap, setLoadingSkillGap] = useState(false);
+  const [skillGapSearchQuery, setSkillGapSearchQuery] = useState<string>('');
+  const [skillGapPage, setSkillGapPage] = useState<number>(1);
+  const [skillGapPerPage, setSkillGapPerPage] = useState<number>(5);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [skillsOverview, setSkillsOverview] = useState<SkillOverview[]>([]);
@@ -71,6 +76,22 @@ export const AdminDashboard: React.FC = () => {
   useEffect(() => {
     setSkillsPage(1);
   }, [skillSearchQuery, categoryFilter, skillCategoryFilter]);
+
+  useEffect(() => {
+    setSkillGapPage(1);
+  }, [skillGapSearchQuery]);
+
+  const loadAllEmployeesAnalysis = async () => {
+    setLoadingSkillGap(true);
+    try {
+      const analyses = await bandsApi.getAllEmployeesAnalysis();
+      setAllEmployeesAnalysis(analyses);
+    } catch (error) {
+      console.error('Failed to load all employees analysis:', error);
+    } finally {
+      setLoadingSkillGap(false);
+    }
+  };
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -271,7 +292,7 @@ export const AdminDashboard: React.FC = () => {
       <div className="max-w-6xl mx-auto px-6 mt-4">
         <h2 className="text-center text-lg font-semibold text-gray-800 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <button
+            <button
             onClick={() => setActiveTab('overview')}
             className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
               activeTab === 'overview' ? 'ring-2 ring-blue-500 bg-white' : 'bg-white'
@@ -289,11 +310,15 @@ export const AdminDashboard: React.FC = () => {
               <div className="text-sm font-semibold text-gray-900">Overview</div>
               <div className="text-xs text-gray-500">Summary metrics</div>
             </div>
-          </button>
-          <div
-            className="flex items-center gap-3 rounded-2xl shadow-xl p-4 bg-white"
-            aria-label="Skill Gap Analysis"
-            title="Skill Gap Analysis"
+            </button>
+            <button
+            onClick={() => {
+              setActiveTab('skill-gap');
+              loadAllEmployeesAnalysis();
+            }}
+            className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
+              activeTab === 'skill-gap' ? 'ring-2 ring-rose-500 bg-white' : 'bg-white'
+            }`}
           >
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-rose-600">
@@ -306,8 +331,8 @@ export const AdminDashboard: React.FC = () => {
               <div className="text-sm font-semibold text-gray-900">Skill Gap Analysis</div>
               <div className="text-xs text-gray-500">Analyze gaps</div>
             </div>
-          </div>
-          <button
+            </button>
+              <button
             onClick={() => setActiveTab('employees')}
             className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
               activeTab === 'employees' ? 'ring-2 ring-green-500 bg-white' : 'bg-white'
@@ -323,8 +348,8 @@ export const AdminDashboard: React.FC = () => {
             <div>
               <div className="text-sm font-semibold text-gray-900">Employees</div>
               <div className="text-xs text-gray-500">Manage employees</div>
-            </div>
-          </button>
+          </div>
+              </button>
           <button
             onClick={() => setActiveTab('skills')}
             className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
@@ -350,9 +375,9 @@ export const AdminDashboard: React.FC = () => {
             <div>
               <div className="text-sm font-semibold text-gray-900">Skills</div>
               <div className="text-xs text-gray-500">Browse skills</div>
-            </div>
+        </div>
           </button>
-          <button
+              <button
             onClick={() => setActiveTab('improvements')}
             className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
               activeTab === 'improvements' ? 'ring-2 ring-indigo-500 bg-white' : 'bg-white'
@@ -370,7 +395,7 @@ export const AdminDashboard: React.FC = () => {
               <div className="text-sm font-semibold text-gray-900">Improvements</div>
               <div className="text-xs text-gray-500">Track improvements</div>
             </div>
-          </button>
+              </button>
         </div>
       </div>
 
@@ -404,7 +429,7 @@ export const AdminDashboard: React.FC = () => {
 
         {/* Overview Tab */}
         {activeTab === 'overview' && stats && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
               <h3 className="text-sm font-medium text-gray-500">Total Employees</h3>
               <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total_employees}</p>
@@ -945,7 +970,7 @@ export const AdminDashboard: React.FC = () => {
                     );
                   }
                   return true;
-                  }).length === 0 && (
+                }).length === 0 && (
                   <div className="col-span-full text-center py-8 text-gray-500">No skills found</div>
                 )}
                 <div className="col-span-full flex justify-end items-center gap-2">
@@ -985,7 +1010,285 @@ export const AdminDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* Improvements Tab */}
+        {/* Skill Gap Analysis Tab */}
+        {activeTab === 'skill-gap' && (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">All Employees Skill Gap Analysis</h2>
+              <p className="text-sm text-gray-600">View skill gaps for all employees based on their band requirements</p>
+            </div>
+            
+            {/* Search and Pagination Controls */}
+            <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+              <div className="flex-1 max-w-md">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search by employee name or ID..."
+                    value={skillGapSearchQuery}
+                    onChange={(e) => setSkillGapSearchQuery(e.target.value)}
+                    className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                  <svg
+                    className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Employees per page</label>
+                <select
+                  value={skillGapPerPage}
+                  onChange={(e) => {
+                    setSkillGapPerPage(Number(e.target.value));
+                    setSkillGapPage(1);
+                  }}
+                  className="px-2 py-1 border border-gray-300 rounded-lg bg-white text-sm"
+                >
+                  {[5, 10, 20, 50].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {loadingSkillGap ? (
+              <div className="text-center py-8 text-gray-500">Loading skill gap analysis...</div>
+            ) : (() => {
+              // Filter employees based on search query
+              const filteredAnalysis = allEmployeesAnalysis.filter((analysis) => {
+                if (!skillGapSearchQuery.trim()) return true;
+                const query = skillGapSearchQuery.toLowerCase();
+                return (
+                  analysis.employee_name.toLowerCase().includes(query) ||
+                  analysis.employee_id.toLowerCase().includes(query) ||
+                  analysis.band.toLowerCase().includes(query)
+                );
+              });
+
+              // Calculate pagination
+              const totalPages = Math.max(1, Math.ceil(filteredAnalysis.length / skillGapPerPage));
+              const startIndex = (skillGapPage - 1) * skillGapPerPage;
+              const endIndex = startIndex + skillGapPerPage;
+              const paginatedAnalysis = filteredAnalysis.slice(startIndex, endIndex);
+
+              if (filteredAnalysis.length === 0) {
+                return (
+                  <div className="text-center py-8 text-gray-500">
+                    {skillGapSearchQuery
+                      ? `No employees found matching "${skillGapSearchQuery}"`
+                      : 'No employees found with skill gap data.'}
+                  </div>
+                );
+              }
+
+              return (
+                <>
+                  <div className="mb-4 text-sm text-gray-600">
+                    Showing {startIndex + 1} to {Math.min(endIndex, filteredAnalysis.length)} of {filteredAnalysis.length} employees
+                  </div>
+                  <div className="space-y-6">
+                    {paginatedAnalysis.map((analysis) => (
+                  <div key={analysis.employee_id} className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">{analysis.employee_name}</h3>
+                          <p className="text-sm text-gray-600">Employee ID: {analysis.employee_id}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-center">
+                            <div className="text-xs text-gray-500 mb-1">Band</div>
+                            <div className="text-2xl font-bold text-indigo-600">{analysis.band}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-xs text-gray-500 mb-1">Avg Rating</div>
+                            <div className="text-lg font-semibold text-gray-900">{analysis.average_rating.toFixed(2)}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-xs text-gray-500 mb-1">Total Skills</div>
+                            <div className="text-lg font-semibold text-gray-900">{analysis.total_skills}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-3 h-3 rounded-full bg-green-500"></span>
+                          <span className="text-sm text-gray-700">
+                            Above: {analysis.skills_above_requirement}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-3 h-3 rounded-full bg-gray-400"></span>
+                          <span className="text-sm text-gray-700">
+                            At: {analysis.skills_at_requirement}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-3 h-3 rounded-full bg-yellow-500"></span>
+                          <span className="text-sm text-gray-700">
+                            Below: {analysis.skills_below_requirement}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    {analysis.skill_gaps.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Skill</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Category</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Current Rating</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Required Rating</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Gap</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {analysis.skill_gaps.map((gap, idx) => {
+                              const getGapColor = (gap: number) => {
+                                if (gap > 0) return 'bg-green-100 text-green-800';
+                                if (gap === 0) return 'bg-gray-100 text-gray-800';
+                                return 'bg-yellow-100 text-yellow-800';
+                              };
+                              const getRatingColor = (rating?: string) => {
+                                switch (rating) {
+                                  case 'Expert': return 'bg-purple-100 text-purple-800';
+                                  case 'Advanced': return 'bg-orange-100 text-orange-800';
+                                  case 'Intermediate': return 'bg-yellow-100 text-yellow-800';
+                                  case 'Developing': return 'bg-blue-100 text-blue-800';
+                                  case 'Beginner': return 'bg-green-100 text-green-800';
+                                  default: return 'bg-gray-100 text-gray-600';
+                                }
+                              };
+                              return (
+                                <tr key={idx} className="hover:bg-gray-50">
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {gap.skill_name}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                    {gap.skill_category || 'N/A'}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    {gap.current_rating_text ? (
+                                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRatingColor(gap.current_rating_text)}`}>
+                                        {gap.current_rating_text} ({gap.current_rating_number || 'N/A'})
+                                      </span>
+                                    ) : (
+                                      <span className="text-sm text-gray-400">No rating</span>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRatingColor(gap.required_rating_text)}`}>
+                                      {gap.required_rating_text} ({gap.required_rating_number})
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getGapColor(gap.gap)}`}>
+                                      {gap.gap > 0 ? '+' : ''}{gap.gap}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    {gap.gap > 0 ? (
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        Above Requirement
+                                      </span>
+                                    ) : gap.gap === 0 ? (
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                        At Requirement
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                        Below Requirement
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="px-6 py-8 text-center text-sm text-gray-500">
+                        No skill gaps found for this employee.
+                      </div>
+                    )}
+                  </div>
+                    ))}
+                  </div>
+                  
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="mt-6 flex justify-center items-center gap-2">
+                      <button
+                        onClick={() => setSkillGapPage((p) => Math.max(1, p - 1))}
+                        disabled={skillGapPage <= 1}
+                        className="px-4 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </button>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                          // Show first page, last page, current page, and pages around current
+                          if (
+                            page === 1 ||
+                            page === totalPages ||
+                            (page >= skillGapPage - 1 && page <= skillGapPage + 1)
+                          ) {
+                            return (
+                              <button
+                                key={page}
+                                onClick={() => setSkillGapPage(page)}
+                                className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                                  skillGapPage === page
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                {page}
+                              </button>
+                            );
+                          } else if (
+                            page === skillGapPage - 2 ||
+                            page === skillGapPage + 2
+                          ) {
+                            return (
+                              <span key={page} className="px-2 text-gray-500">
+                                ...
+                              </span>
+                            );
+                          }
+                          return null;
+                        })}
+                      </div>
+                      <button
+                        onClick={() => setSkillGapPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={skillGapPage >= totalPages}
+                        className="px-4 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        )}
+
         {activeTab === 'improvements' && (
           <div>
             <div className="flex justify-end items-center mb-2">

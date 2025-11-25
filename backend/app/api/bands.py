@@ -146,6 +146,32 @@ def get_employee_band_analysis_endpoint(
     return get_employee_band_analysis(db, employee.id, employee.employee_id, employee.name)
 
 
+@router.get("/all/analysis", response_model=List[BandAnalysis])
+def get_all_employees_band_analysis(
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """Get band analysis for all employees (admin only)."""
+    employees = db.query(Employee).all()
+    analyses = []
+    
+    for employee in employees:
+        try:
+            analysis = get_employee_band_analysis(
+                db, 
+                employee.id, 
+                employee.employee_id, 
+                employee.name
+            )
+            analyses.append(analysis)
+        except Exception as e:
+            # Skip employees with errors, but log them
+            print(f"Error getting analysis for employee {employee.employee_id}: {e}")
+            continue
+    
+    return analyses
+
+
 def get_employee_band_analysis(
     db: Session,
     employee_db_id: int,
