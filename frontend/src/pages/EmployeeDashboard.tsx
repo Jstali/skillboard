@@ -364,103 +364,237 @@ export const EmployeeDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Skills & Proficiency */}
-            <div className="bg-white rounded-md shadow-sm p-4">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-gray-900">Skills & Proficiency</h3>
-                <button
-                  onClick={() => navigate('/edit-skills')}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                    <path d="M21.731 2.269a2.625 2.625 0 00-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 000-3.712zM19.513 8.199l-3.712-3.712-8.4 8.4a5.25 5.25 0 00-1.32 2.214l-.8 2.685a.75.75 0 00.933.933l2.685-.8a5.25 5.25 0 002.214-1.32l8.4-8.4z" />
-                    <path d="M5.25 5.25a3 3 0 00-3 3v10.5a3 3 0 003 3h10.5a3 3 0 003-3V13.5a.75.75 0 00-1.5 0v5.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V8.25a1.5 1.5 0 011.5-1.5h5.25a.75.75 0 000-1.5H5.25z" />
-                  </svg>
-                  Edit Skills
-                </button>
-              </div>
-              
-              {loading ? (
-                <div className="text-center py-8 text-gray-500">Loading skills...</div>
-              ) : skills.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 mx-auto mb-3 text-gray-400">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
-                  </svg>
-                  <p className="text-gray-600 mb-4">No skills added yet.</p>
-                  <button
-                    onClick={() => navigate('/edit-skills')}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-                  >
-                    Add Your First Skill
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Template Skills */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {skills.filter(s => !s.is_interested && !s.is_custom).map((skill) => (
-                      <div key={skill.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md border border-gray-200 hover:bg-gray-100 transition-colors">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900 truncate">
-                            {skill.skill?.name || 'Unknown'}
-                          </div>
-                          {skill.skill?.category && (
-                            <div className="text-xs text-gray-500 truncate">
-                              {skill.skill.category}
-                            </div>
-                          )}
-                        </div>
-                        <div className="ml-3 flex-shrink-0">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${getSkillLevelColor(skill.rating || undefined)}`}>
-                            {skill.rating || 'Not Rated'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Custom Skills Section - Separate from main skills */}
-            {skills.filter(s => !s.is_interested && s.is_custom).length > 0 && (
+            {/* Skills Overview Charts */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Skills by Category - Pie Chart */}
               <div className="bg-white rounded-md shadow-sm p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-green-600">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" />
-                    </svg>
-                    Custom Skills
-                  </h3>
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {skills.filter(s => !s.is_interested && s.is_custom).length} skill(s)
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {skills.filter(s => !s.is_interested && s.is_custom).map((skill) => (
-                    <div key={skill.id} className="flex items-center justify-between p-3 bg-green-50 rounded-md border border-green-200 hover:bg-green-100 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 truncate">
-                          {skill.skill?.name || 'Unknown'}
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Skills by Category</h3>
+                {loading ? (
+                  <div className="h-48 flex items-center justify-center text-gray-500">Loading...</div>
+                ) : getSkillsByCategory().length === 0 ? (
+                  <div className="h-48 flex items-center justify-center text-gray-500">No skills data</div>
+                ) : (
+                  <div className="flex items-center gap-4">
+                    {/* Simple Pie Chart using CSS */}
+                    <div className="relative w-40 h-40 flex-shrink-0">
+                      <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
+                        {(() => {
+                          const data = getSkillsByCategory();
+                          const total = data.reduce((sum, d) => sum + d.value, 0);
+                          let cumulative = 0;
+                          return data.map((item, i) => {
+                            const percentage = (item.value / total) * 100;
+                            const dashArray = `${percentage} ${100 - percentage}`;
+                            const dashOffset = -cumulative;
+                            cumulative += percentage;
+                            return (
+                              <circle
+                                key={item.name}
+                                cx="50" cy="50" r="40"
+                                fill="transparent"
+                                stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                                strokeWidth="20"
+                                strokeDasharray={dashArray}
+                                strokeDashoffset={dashOffset}
+                              />
+                            );
+                          });
+                        })()}
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-gray-900">{skills.filter(s => !s.is_interested).length}</div>
+                          <div className="text-xs text-gray-500">Skills</div>
                         </div>
-                        {skill.skill?.category && (
-                          <div className="text-xs text-green-700 truncate mt-0.5">
-                            {skill.skill.category}
-                          </div>
-                        )}
-                      </div>
-                      <div className="ml-3 flex-shrink-0">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${getSkillLevelColor(skill.rating || undefined)}`}>
-                          {skill.rating || 'Not Rated'}
-                        </span>
                       </div>
                     </div>
-                  ))}
-                </div>
+                    {/* Legend */}
+                    <div className="flex-1 space-y-1 max-h-40 overflow-y-auto">
+                      {getSkillsByCategory().map((item, i) => (
+                        <div key={item.name} className="flex items-center gap-2 text-sm">
+                          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
+                          <span className="truncate text-gray-700">{item.name}</span>
+                          <span className="text-gray-500 ml-auto">({item.value})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Skills by Rating - Bar Chart */}
+              <div className="bg-white rounded-md shadow-sm p-4">
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Skills by Proficiency</h3>
+                {loading ? (
+                  <div className="h-48 flex items-center justify-center text-gray-500">Loading...</div>
+                ) : (
+                  <div className="space-y-3">
+                    {getSkillsByRating().map((item) => {
+                      const maxValue = Math.max(...getSkillsByRating().map(r => r.value), 1);
+                      const percentage = (item.value / maxValue) * 100;
+                      return (
+                        <div key={item.name} className="flex items-center gap-3">
+                          <div className="w-24 text-sm text-gray-700 font-medium">{item.name}</div>
+                          <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${percentage}%`, backgroundColor: RATING_COLORS[item.name] || '#6B7280' }}
+                            />
+                          </div>
+                          <div className="w-8 text-sm text-gray-600 text-right font-semibold">{item.value}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Add Custom Skill & Interested Skill Forms */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Add Custom Skill */}
+              <div className="bg-white rounded-md shadow-sm p-4">
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-green-600">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  Add Custom Skill
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Skill Name *</label>
+                    <input
+                      type="text"
+                      value={customSkillName}
+                      onChange={(e) => setCustomSkillName(e.target.value)}
+                      placeholder="e.g., Machine Learning"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <input
+                      type="text"
+                      value={customSkillCategory}
+                      onChange={(e) => setCustomSkillCategory(e.target.value)}
+                      placeholder="e.g., Data Science"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Proficiency Level</label>
+                    <select
+                      value={customSkillRating}
+                      onChange={(e) => setCustomSkillRating(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    >
+                      <option value="Beginner">Beginner</option>
+                      <option value="Developing">Developing</option>
+                      <option value="Intermediate">Intermediate</option>
+                      <option value="Advanced">Advanced</option>
+                      <option value="Expert">Expert</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Certificate URL (Optional)</label>
+                    <input
+                      type="text"
+                      value={customSkillCertificate}
+                      onChange={(e) => setCustomSkillCertificate(e.target.value)}
+                      placeholder="https://certificate-link.com"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </div>
+                  <button
+                    onClick={handleAddCustomSkill}
+                    disabled={!customSkillName.trim() || addingCustomSkill}
+                    className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                  >
+                    {addingCustomSkill ? 'Adding...' : 'Add Custom Skill'}
+                  </button>
+                </div>
+
+                {/* Existing Custom Skills */}
+                {skills.filter(s => !s.is_interested && s.is_custom).length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Your Custom Skills ({skills.filter(s => !s.is_interested && s.is_custom).length})</h4>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {skills.filter(s => !s.is_interested && s.is_custom).map((skill) => (
+                        <div key={skill.id} className="flex items-center justify-between p-2 bg-green-50 rounded-md">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">{skill.skill?.name}</div>
+                            {skill.skill?.category && <div className="text-xs text-green-700">{skill.skill.category}</div>}
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getSkillLevelColor(skill.rating || undefined)}`}>
+                            {skill.rating || 'N/A'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Add Interested Skill */}
+              <div className="bg-white rounded-md shadow-sm p-4">
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-blue-600">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                  </svg>
+                  Add Interested Skill
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">Add skills you want to learn or develop</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Skill Name *</label>
+                    <input
+                      type="text"
+                      value={interestedSkillName}
+                      onChange={(e) => setInterestedSkillName(e.target.value)}
+                      placeholder="e.g., Kubernetes"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <input
+                      type="text"
+                      value={interestedSkillCategory}
+                      onChange={(e) => setInterestedSkillCategory(e.target.value)}
+                      placeholder="e.g., DevOps"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <button
+                    onClick={handleAddInterestedSkill}
+                    disabled={!interestedSkillName.trim() || addingInterestedSkill}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                  >
+                    {addingInterestedSkill ? 'Adding...' : 'Add to Interests'}
+                  </button>
+                </div>
+
+                {/* Existing Interested Skills */}
+                {skills.filter(s => s.is_interested).length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Your Interested Skills ({skills.filter(s => s.is_interested).length})</h4>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {skills.filter(s => s.is_interested).map((skill) => (
+                        <div key={skill.id} className="flex items-center justify-between p-2 bg-blue-50 rounded-md">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">{skill.skill?.name}</div>
+                            {skill.skill?.category && <div className="text-xs text-blue-700">{skill.skill.category}</div>}
+                          </div>
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
+                            Interested
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
