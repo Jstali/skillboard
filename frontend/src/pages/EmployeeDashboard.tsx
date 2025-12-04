@@ -366,23 +366,28 @@ export const EmployeeDashboard: React.FC = () => {
 
             {/* Skills Overview Charts */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Skills by Category - Pie Chart */}
+              {/* Skills vs Requirements - Pie Chart */}
               <div className="bg-white rounded-md shadow-sm p-4">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Skills by Category</h3>
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Skills vs Requirements</h3>
                 {loading ? (
                   <div className="h-48 flex items-center justify-center text-gray-500">Loading...</div>
-                ) : getSkillsByCategory().length === 0 ? (
+                ) : !analysis ? (
                   <div className="h-48 flex items-center justify-center text-gray-500">No skills data</div>
                 ) : (
                   <div className="flex items-center gap-4">
-                    {/* Simple Pie Chart using CSS */}
+                    {/* Pie Chart for Below/At/Above Requirements */}
                     <div className="relative w-40 h-40 flex-shrink-0">
                       <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
                         {(() => {
-                          const data = getSkillsByCategory();
+                          const data = [
+                            { name: 'Below Requirement', value: analysis.skills_below_requirement, color: '#EAB308' },
+                            { name: 'At Requirement', value: analysis.skills_at_requirement, color: '#6B7280' },
+                            { name: 'Above Requirement', value: analysis.skills_above_requirement, color: '#22C55E' },
+                          ].filter(d => d.value > 0);
                           const total = data.reduce((sum, d) => sum + d.value, 0);
+                          if (total === 0) return null;
                           let cumulative = 0;
-                          return data.map((item, i) => {
+                          return data.map((item) => {
                             const percentage = (item.value / total) * 100;
                             const dashArray = `${percentage} ${100 - percentage}`;
                             const dashOffset = -cumulative;
@@ -392,7 +397,7 @@ export const EmployeeDashboard: React.FC = () => {
                                 key={item.name}
                                 cx="50" cy="50" r="40"
                                 fill="transparent"
-                                stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                                stroke={item.color}
                                 strokeWidth="20"
                                 strokeDasharray={dashArray}
                                 strokeDashoffset={dashOffset}
@@ -403,20 +408,28 @@ export const EmployeeDashboard: React.FC = () => {
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div className="text-center">
-                          <div className="text-2xl font-bold text-gray-900">{skills.filter(s => !s.is_interested).length}</div>
+                          <div className="text-2xl font-bold text-gray-900">{analysis.total_skills}</div>
                           <div className="text-xs text-gray-500">Skills</div>
                         </div>
                       </div>
                     </div>
                     {/* Legend */}
-                    <div className="flex-1 space-y-1 max-h-40 overflow-y-auto">
-                      {getSkillsByCategory().map((item, i) => (
-                        <div key={item.name} className="flex items-center gap-2 text-sm">
-                          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
-                          <span className="truncate text-gray-700">{item.name}</span>
-                          <span className="text-gray-500 ml-auto">({item.value})</span>
-                        </div>
-                      ))}
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0 bg-yellow-500" />
+                        <span className="text-gray-700">Below Requirement</span>
+                        <span className="text-gray-500 ml-auto font-semibold">({analysis.skills_below_requirement})</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0 bg-gray-500" />
+                        <span className="text-gray-700">At Requirement</span>
+                        <span className="text-gray-500 ml-auto font-semibold">({analysis.skills_at_requirement})</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0 bg-green-500" />
+                        <span className="text-gray-700">Above Requirement</span>
+                        <span className="text-gray-500 ml-auto font-semibold">({analysis.skills_above_requirement})</span>
+                      </div>
                     </div>
                   </div>
                 )}
