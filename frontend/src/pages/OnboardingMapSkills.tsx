@@ -251,50 +251,6 @@ export const OnboardingMapSkills: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Add Custom Skill Button */}
-                <div className="mb-3">
-                  {!showCustomSkillInput ? (
-                    <button
-                      onClick={() => setShowCustomSkillInput(true)}
-                      className="w-full px-3 py-2 bg-green-50 text-green-700 border border-green-300 rounded-md hover:bg-green-100 text-xs font-medium flex items-center justify-center gap-2"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                      </svg>
-                      Add Custom Skill
-                    </button>
-                  ) : (
-                    <div className="space-y-2">
-                      <input
-                        type="text"
-                        placeholder="Enter skill name..."
-                        value={customSkillName}
-                        onChange={(e) => setCustomSkillName(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleAddCustomSkill()}
-                        className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
-                        autoFocus
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleAddCustomSkill}
-                          className="flex-1 px-2 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 text-xs font-medium"
-                        >
-                          Add
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowCustomSkillInput(false);
-                            setCustomSkillName('');
-                          }}
-                          className="flex-1 px-2 py-1.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 text-xs font-medium"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
                 <SkillBrowser
                   searchQuery={searchQuery}
                   excludeSkillIds={excludeSkillIds}

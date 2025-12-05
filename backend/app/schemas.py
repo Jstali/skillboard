@@ -67,6 +67,7 @@ class EmployeeSkillCreate(EmployeeSkillBase):
 class EmployeeSkillCreateMe(BaseModel):
     """Schema for creating employee skill via /me endpoint (no employee_id needed)."""
     skill_name: str
+    skill_category: Optional[str] = None  # Category for the skill
     rating: Optional[RatingEnum] = None  # Optional - not required for interested skills
     years_experience: Optional[float] = None
     is_interested: Optional[bool] = False

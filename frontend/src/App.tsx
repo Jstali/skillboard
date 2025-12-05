@@ -10,6 +10,7 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { SkillGapBoard } from './pages/SkillGapBoard';
 import { EmployeeLearning } from './pages/EmployeeLearning';
 import { AdminLearning } from './pages/AdminLearning';
+import { CareerPathways } from './pages/CareerPathways';
 import { PrivateRoute } from './components/PrivateRoute';
 import { authApi } from './services/api';
 
@@ -53,6 +54,14 @@ function App() {
           }
         />
         <Route
+          path="/skill-browser"
+          element={
+            <PrivateRoute>
+              <OnboardingMapSkills />
+            </PrivateRoute>
+          }
+        />
+        <Route
           path="/admin/users"
           element={
             <PrivateRoute>
@@ -89,6 +98,14 @@ function App() {
           element={
             <PrivateRoute>
               <AdminLearning />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/admin/career-pathways"
+          element={
+            <PrivateRoute>
+              <CareerPathways />
             </PrivateRoute>
           }
         />

@@ -92,11 +92,37 @@ def get_skill(skill_id: int, db: Session = Depends(database.get_db)):
 
 
 @router.post("/", response_model=Skill)
-def create_skill(skill: SkillCreate, db: Session = Depends(database.get_db)):
-    """Create a new skill."""
+def create_skill(
+    skill: SkillCreate, 
+    add_to_category: Optional[str] = None,
+    db: Session = Depends(database.get_db)
+):
+    """Create a new skill and optionally add it to a category template."""
     # Check if skill already exists
     existing = crud.get_skill_by_name(db, skill.name)
     if existing:
         raise HTTPException(status_code=400, detail="Skill already exists")
-    return crud.create_skill(db, skill.model_dump())
+    
+    # Create the skill
+    new_skill = crud.create_skill(db, skill.model_dump())
+    
+    # If add_to_category is provided, add the skill to that category's template
+    if add_to_category:
+        # Check if already in template
+        existing_template = db.query(CategorySkillTemplate).filter(
+            CategorySkillTemplate.category == add_to_category,
+            CategorySkillTemplate.skill_id == new_skill.id
+        ).first()
+        
+        if not existing_template:
+            # Add to category template
+            template_entry = CategorySkillTemplate(
+                category=add_to_category,
+                skill_id=new_skill.id,
+                is_required=False
+            )
+            db.add(template_entry)
+            db.commit()
+    
+    return new_skill
 

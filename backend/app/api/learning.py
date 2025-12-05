@@ -861,12 +861,17 @@ def get_skill_gap_report(
                 EmployeeSkill.skill_id == requirement.skill_id
             ).first()
             
+            # Skip if employee doesn't have this skill at all (no rating)
+            # We only show gaps for skills the employee has started learning
+            if not employee_skill or not employee_skill.rating:
+                continue
+            
             # Skip if this is a custom skill (not required for role)
-            if employee_skill and employee_skill.is_custom:
+            if employee_skill.is_custom:
                 continue
             
             # Determine if employee is below required level
-            current_level = rating_to_level(employee_skill.rating if employee_skill else None)
+            current_level = rating_to_level(employee_skill.rating)
             required_level = rating_to_level(requirement.required_rating)
             
             if current_level < required_level:

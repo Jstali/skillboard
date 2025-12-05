@@ -1,12 +1,14 @@
 /** Admin/HR Dashboard - View all employees, skills, and improvements. */
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import { authApi, adminDashboardApi, adminApi, categoriesApi, bandsApi, Employee, EmployeeSkill, SkillOverview, SkillImprovement, DashboardStats, UploadResponse, BandAnalysis } from '../services/api';
+import { authApi, adminDashboardApi, adminApi, categoriesApi, bandsApi, skillsApi, Employee, EmployeeSkill, SkillOverview, SkillImprovement, DashboardStats, UploadResponse, BandAnalysis } from '../services/api';
 import NxzenLogo from '../images/Nxzen.jpg';
 
 export const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'skills' | 'improvements' | 'skill-gap'>('overview');
+  const [searchParams] = useSearchParams();
+  const initialTab = (searchParams.get('tab') as 'overview' | 'employees' | 'skills' | 'improvements' | 'skill-gap') || 'overview';
+  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'skills' | 'improvements' | 'skill-gap'>(initialTab);
   const [allEmployeesAnalysis, setAllEmployeesAnalysis] = useState<BandAnalysis[]>([]);
   const [loadingSkillGap, setLoadingSkillGap] = useState(false);
   const [skillGapSearchQuery, setSkillGapSearchQuery] = useState<string>('');
@@ -45,6 +47,16 @@ export const AdminDashboard: React.FC = () => {
   const [addingCategory, setAddingCategory] = useState(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [expandedSubcategories, setExpandedSubcategories] = useState<Record<string, boolean>>({});
+  // Modal states for adding skill category and skill
+  const [showAddSkillCategoryModal, setShowAddSkillCategoryModal] = useState(false);
+  const [newSkillCategoryName, setNewSkillCategoryName] = useState('');
+  const [addSkillCategoryForPathway, setAddSkillCategoryForPathway] = useState('');
+  const [savingSkillCategory, setSavingSkillCategory] = useState(false);
+  const [showAddSkillModal, setShowAddSkillModal] = useState(false);
+  const [newSkillName, setNewSkillName] = useState('');
+  const [addSkillForCategory, setAddSkillForCategory] = useState('');
+  const [addSkillForPathway, setAddSkillForPathway] = useState('');
+  const [savingSkill, setSavingSkill] = useState(false);
   const navigate = useNavigate();
 
   const user = authApi.getUser();
@@ -366,6 +378,87 @@ export const AdminDashboard: React.FC = () => {
     }));
   };
 
+  // Handler for saving a new skill category
+  const handleSaveSkillCategory = async () => {
+    if (!newSkillCategoryName.trim()) return;
+
+    setSavingSkillCategory(true);
+    setUploadError('');
+
+    try {
+      // Create a placeholder skill with the new category to establish the category
+      // Use a timestamp to ensure uniqueness
+      const timestamp = Date.now();
+      await skillsApi.create({
+        name: `${newSkillCategoryName.trim()} - Sample Skill ${timestamp}`,
+        description: `Sample skill for ${newSkillCategoryName.trim()} category`,
+        category: newSkillCategoryName.trim()
+      });
+      
+      setSkillsUploadResult({
+        message: `Skill category "${newSkillCategoryName.trim()}" created successfully`,
+        rows_processed: 1,
+        rows_created: 1,
+        rows_updated: 0,
+      });
+      
+      setShowAddSkillCategoryModal(false);
+      setNewSkillCategoryName('');
+      // Reload data to show the new category
+      loadDashboardData();
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.detail || 'Failed to create skill category';
+      setUploadError(errorMessage);
+      // Don't close modal on error so user can see the message and try again
+    } finally {
+      setSavingSkillCategory(false);
+    }
+  };
+
+  // Handler for saving a new skill
+  const handleSaveSkill = async () => {
+    if (!newSkillName.trim()) return;
+
+    setSavingSkill(true);
+    setUploadError('');
+
+    try {
+      console.log('Creating skill:', {
+        name: newSkillName.trim(),
+        description: `Skill in ${addSkillForCategory} category`,
+        category: addSkillForCategory,
+        addToCategory: addSkillForPathway
+      });
+      
+      // Create skill and add it to the employee category template
+      await skillsApi.create({
+        name: newSkillName.trim(),
+        description: `Skill in ${addSkillForCategory} category`,
+        category: addSkillForCategory
+      }, addSkillForPathway); // Pass the employee category (pathway) to add to template
+      
+      setSkillsUploadResult({
+        message: `Skill "${newSkillName.trim()}" created successfully in "${addSkillForCategory}"`,
+        rows_processed: 1,
+        rows_created: 1,
+        rows_updated: 0,
+      });
+      
+      setShowAddSkillModal(false);
+      setNewSkillName('');
+      // Reload data to show the new skill
+      loadDashboardData();
+    } catch (err: any) {
+      console.error('Error creating skill:', err);
+      console.error('Error response:', err.response);
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to create skill';
+      setUploadError(errorMessage);
+      // Don't close modal on error so user can see the message and try again
+    } finally {
+      setSavingSkill(false);
+    }
+  };
+
   if (loading && activeTab === 'overview') {
     return (
       <div className="min-h-screen bg-[#F6F2F4] flex items-center justify-center">
@@ -412,9 +505,9 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-6 mt-4">
+      <div className="max-w-7xl mx-auto px-6 mt-4">
         <h2 className="text-center text-lg font-semibold text-gray-800 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
             <button
             onClick={() => setActiveTab('overview')}
             className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
@@ -532,6 +625,22 @@ export const AdminDashboard: React.FC = () => {
             <div>
               <div className="text-sm font-semibold text-gray-900">Learning</div>
               <div className="text-xs text-gray-500">Manage courses</div>
+            </div>
+              </button>
+              <button
+            onClick={() => navigate('/admin/career-pathways')}
+            className="flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition bg-white"
+          >
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-teal-600">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                <path d="M2 17l10 5 10-5"></path>
+                <path d="M2 12l10 5 10-5"></path>
+              </svg>
+            </span>
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Career Pathways</div>
+              <div className="text-xs text-gray-500">Skill requirements</div>
             </div>
               </button>
         </div>
@@ -662,7 +771,7 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                   </div>
                   <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
-                    <h3 className="text-sm font-semibold text-gray-800 mb-3">Band vs Ratings (stacked)</h3>
+                    <h3 className="text-sm font-semibold text-gray-800 mb-3">Employees by Band</h3>
                     <div className="h-64">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={bandRatingsData}>
@@ -671,35 +780,47 @@ export const AdminDashboard: React.FC = () => {
                           <YAxis allowDecimals={false} />
                           <Tooltip />
                           <Legend />
-                          <Bar dataKey="Beginner" stackId="a" fill={ratingColors.Beginner} />
-                          <Bar dataKey="Developing" stackId="a" fill={ratingColors.Developing} />
-                          <Bar dataKey="Intermediate" stackId="a" fill={ratingColors.Intermediate} />
-                          <Bar dataKey="Advanced" stackId="a" fill={ratingColors.Advanced} />
-                          <Bar dataKey="Expert" stackId="a" fill={ratingColors.Expert} />
+                          <Bar dataKey="Beginner" stackId="a" fill={ratingColors.Beginner} name="Beginner" />
+                          <Bar dataKey="Developing" stackId="a" fill={ratingColors.Developing} name="Developing" />
+                          <Bar dataKey="Intermediate" stackId="a" fill={ratingColors.Intermediate} name="Intermediate" />
+                          <Bar dataKey="Advanced" stackId="a" fill={ratingColors.Advanced} name="Advanced" />
+                          <Bar dataKey="Expert" stackId="a" fill={ratingColors.Expert} name="Expert" />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
                   </div>
 
                   <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
-                    <h3 className="text-sm font-semibold text-gray-800 mb-3">Employees Skill Adoption</h3>
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={existingPie} cx="50%" cy="50%" outerRadius={60} label dataKey="value">
-                            {existingPie.map((entry, index) => (
-                              <Cell key={`cell-ex-${index}`} fill={index === 0 ? '#10b981' : '#f59e0b'} />
-                            ))}
-                          </Pie>
-                          <Pie data={interestedPie} cx="50%" cy="50%" innerRadius={70} outerRadius={100} dataKey="value">
-                            {interestedPie.map((entry, index) => (
-                              <Cell key={`cell-in-${index}`} fill={index === 0 ? '#6366f1' : '#ef4444'} />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
+                    <h3 className="text-sm font-semibold text-gray-800 mb-3">Skill Adoption Overview</h3>
+                    <div className="h-64 flex items-center justify-center">
+                      <div className="grid grid-cols-2 gap-8 w-full">
+                        <div className="text-center">
+                          <div className="text-3xl font-bold text-green-600">{existing}</div>
+                          <div className="text-sm text-gray-600">Employees with Skills</div>
+                          <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-green-500 rounded-full" 
+                              style={{ width: `${stats.total_employees > 0 ? (existing / stats.total_employees) * 100 : 0}%` }}
+                            />
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {stats.total_employees > 0 ? Math.round((existing / stats.total_employees) * 100) : 0}% of total
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-3xl font-bold text-indigo-600">{interested}</div>
+                          <div className="text-sm text-gray-600">With Interested Skills</div>
+                          <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-indigo-500 rounded-full" 
+                              style={{ width: `${stats.total_employees > 0 ? (interested / stats.total_employees) * 100 : 0}%` }}
+                            />
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {stats.total_employees > 0 ? Math.round((interested / stats.total_employees) * 100) : 0}% of total
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div className="lg:col-span-3">
@@ -1088,42 +1209,99 @@ export const AdminDashboard: React.FC = () => {
                 />
               </div>
               <button
-                onClick={() => setShowAddCategory(!showAddCategory)}
+                onClick={() => {
+                  setUploadError('');
+                  setShowAddCategory(true);
+                }}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium whitespace-nowrap"
               >
                 + Add Category
               </button>
             </div>
 
-            {/* Add Category Form */}
+            {/* Add Category Modal */}
             {showAddCategory && (
-              <div className="mb-6 bg-blue-50 rounded-lg p-4 border border-blue-200">
-                <h3 className="text-lg font-semibold mb-3 text-gray-800">Create New Category</h3>
-                <div className="flex gap-3">
-                  <input
-                    type="text"
-                    placeholder="Enter category name (e.g., Technical, P&C, Consultancy)"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAddCategory()}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button
-                    onClick={handleAddCategory}
-                    disabled={addingCategory || !newCategoryName.trim()}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                  >
-                    {addingCategory ? 'Creating...' : 'Create'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowAddCategory(false);
-                      setNewCategoryName('');
-                    }}
-                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 font-medium"
-                  >
-                    Cancel
-                  </button>
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+                  {/* Header */}
+                  <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-xl font-semibold text-white">Create New Category</h2>
+                        <p className="text-green-100 text-sm mt-1">Add a new employee category</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowAddCategory(false);
+                          setNewCategoryName('');
+                        }}
+                        className="text-white/80 hover:text-white transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Body */}
+                  <div className="p-6">
+                    {uploadError && (
+                      <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-800">{uploadError}</p>
+                      </div>
+                    )}
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Category Name</label>
+                    <input
+                      type="text"
+                      placeholder="Enter category name (e.g., Technical, P&C, Consultancy)"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleAddCategory()}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                      autoFocus
+                      disabled={addingCategory}
+                    />
+                    <p className="text-xs text-gray-500 mt-2">
+                      This will create a new category for organizing employees and their skill templates.
+                    </p>
+                  </div>
+                  
+                  {/* Footer */}
+                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+                    <button
+                      onClick={() => {
+                        setShowAddCategory(false);
+                        setNewCategoryName('');
+                      }}
+                      disabled={addingCategory}
+                      className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddCategory}
+                      disabled={addingCategory || !newCategoryName.trim()}
+                      className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {addingCategory ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Creating...
+                        </>
+                      ) : (
+                        <>
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                          Save
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1169,13 +1347,27 @@ export const AdminDashboard: React.FC = () => {
                                 {templates.length} skill{templates.length !== 1 ? 's' : ''}
                               </span>
                             </div>
-                            <button
-                              onClick={() => handleCategoryImportClick(category)}
-                              disabled={isUploading}
-                              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                            >
-                              {isUploading ? 'Uploading...' : 'Import Skills'}
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setAddSkillCategoryForPathway(category);
+                                  setNewSkillCategoryName('');
+                                  setUploadError('');
+                                  setShowAddSkillCategoryModal(true);
+                                }}
+                                className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium"
+                                title="Add Skill Category"
+                              >
+                                + Add Category
+                              </button>
+                              <button
+                                onClick={() => handleCategoryImportClick(category)}
+                                disabled={isUploading}
+                                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                              >
+                                {isUploading ? 'Uploading...' : 'Import Skills'}
+                              </button>
+                            </div>
                             <input
                               ref={(el) => { categoryFileInputRefs.current[category] = el; }}
                               type="file"
@@ -1205,6 +1397,20 @@ export const AdminDashboard: React.FC = () => {
                                     >
                                       <h3 className="text-base font-bold text-gray-800">{skillCategory}</h3>
                                       <div className="flex items-center gap-2">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setAddSkillForPathway(category);
+                                            setAddSkillForCategory(skillCategory);
+                                            setNewSkillName('');
+                                            setUploadError('');
+                                            setShowAddSkillModal(true);
+                                          }}
+                                          className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs font-medium"
+                                          title="Add Skill to Category"
+                                        >
+                                          + Add Skill
+                                        </button>
                                         <span className="text-sm text-gray-600">
                                           {skillTemplates.length} skill{skillTemplates.length !== 1 ? 's' : ''}
                                         </span>
@@ -1707,7 +1913,6 @@ export const AdminDashboard: React.FC = () => {
                                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Skill</th>
                                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Initial Rating</th>
                                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Rating</th>
-                                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Years Experience</th>
                                         </tr>
                                       </thead>
                                       <tbody className="bg-white divide-y divide-gray-200">
@@ -1718,7 +1923,6 @@ export const AdminDashboard: React.FC = () => {
                                             <td className="px-6 py-4 whitespace-nowrap">
                                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">{impItem.current_rating}</span>
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{impItem.years_experience || '-'}</td>
                                           </tr>
                                         ))}
                                       </tbody>
@@ -1764,6 +1968,180 @@ export const AdminDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Add Skill Category Modal */}
+        {showAddSkillCategoryModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-white">Add Skill Category</h2>
+                    <p className="text-blue-100 text-sm mt-1">Add a new skill category to "{addSkillCategoryForPathway}"</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowAddSkillCategoryModal(false);
+                      setNewSkillCategoryName('');
+                    }}
+                    className="text-white/80 hover:text-white transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Body */}
+              <div className="p-6">
+                {uploadError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-800">{uploadError}</p>
+                  </div>
+                )}
+                <label className="block text-sm font-medium text-gray-700 mb-2">Category Name</label>
+                <input
+                  type="text"
+                  value={newSkillCategoryName}
+                  onChange={(e) => setNewSkillCategoryName(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSaveSkillCategory()}
+                  placeholder="e.g., Technical Skills, Soft Skills"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  autoFocus
+                  disabled={savingSkillCategory}
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  This will create a new skill category that can be used to organize skills.
+                </p>
+              </div>
+              
+              {/* Footer */}
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowAddSkillCategoryModal(false);
+                    setNewSkillCategoryName('');
+                  }}
+                  disabled={savingSkillCategory}
+                  className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveSkillCategory}
+                  disabled={!newSkillCategoryName.trim() || savingSkillCategory}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {savingSkillCategory ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Save
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Skill Modal */}
+        {showAddSkillModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-white">Add Skill</h2>
+                    <p className="text-green-100 text-sm mt-1">Add a new skill to "{addSkillForCategory}"</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowAddSkillModal(false);
+                      setNewSkillName('');
+                    }}
+                    className="text-white/80 hover:text-white transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Body */}
+              <div className="p-6">
+                {uploadError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-800">{uploadError}</p>
+                  </div>
+                )}
+                <label className="block text-sm font-medium text-gray-700 mb-2">Skill Name</label>
+                <input
+                  type="text"
+                  value={newSkillName}
+                  onChange={(e) => setNewSkillName(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSaveSkill()}
+                  placeholder="e.g., Python, Project Management"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                  autoFocus
+                  disabled={savingSkill}
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  This skill will be added to the "{addSkillForCategory}" category.
+                </p>
+              </div>
+              
+              {/* Footer */}
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowAddSkillModal(false);
+                    setNewSkillName('');
+                  }}
+                  disabled={savingSkill}
+                  className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveSkill}
+                  disabled={!newSkillName.trim() || savingSkill}
+                  className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {savingSkill ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Save
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Employee Skills Modal */}
         {selectedEmployee && employeeSkills.length > 0 && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1800,9 +2178,7 @@ export const AdminDashboard: React.FC = () => {
                                 <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">Existing</span>
                               </>
                             )}
-                            {es.years_experience && (
-                              <span className="text-xs text-gray-500 ml-2">{es.years_experience} years</span>
-                            )}
+
                           </div>
                           {es.notes && (
                             <p className="text-sm text-gray-600 mt-2">{es.notes}</p>

@@ -1,13 +1,17 @@
 """API routes for managing role requirements (band-based skill requirements)."""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict
+from collections import defaultdict
 from app.db import database
-from app.db.models import RoleRequirement, Skill, RatingEnum
+from app.db.models import RoleRequirement, Skill, RatingEnum, CategorySkillTemplate
 from app.api.dependencies import get_admin_user, User
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/role-requirements", tags=["role-requirements"])
+
+# Standard bands in order
+BANDS = ["A", "B", "C", "L1", "L2", "L3", "U"]
 
 
 class RoleRequirementCreate(BaseModel):
@@ -27,6 +31,17 @@ class RoleRequirementResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BulkUpdateRequest(BaseModel):
+    band_requirements: Dict[str, str]  # band -> required_rating
+
+
+class PathwaySkillResponse(BaseModel):
+    skill_id: int
+    skill_name: str
+    skill_category: Optional[str]
+    band_requirements: Dict[str, str]  # band -> required_rating
 
 
 @router.post("", response_model=RoleRequirementResponse)
@@ -152,3 +167,374 @@ def delete_role_requirement(
     db.commit()
     
     return {"message": "Role requirement deleted successfully"}
+
+
+@router.get("/pathways", response_model=Dict[str, List[PathwaySkillResponse]])
+def get_pathways(
+    category: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """Get all career pathways grouped by skill category (admin only).
+    
+    Returns skills with their required levels for each band.
+    """
+    # Get all role requirements
+    requirements = db.query(RoleRequirement).all()
+    
+    # Build a map of skill_id -> {band -> rating}
+    skill_requirements: Dict[int, Dict[str, str]] = defaultdict(dict)
+    for req in requirements:
+        skill_requirements[req.skill_id][req.band] = req.required_rating.value
+    
+    # Get all skills that have requirements
+    skill_ids = list(skill_requirements.keys())
+    skills = db.query(Skill).filter(Skill.id.in_(skill_ids)).all() if skill_ids else []
+    
+    # Group by category
+    pathways: Dict[str, List[PathwaySkillResponse]] = defaultdict(list)
+    for skill in skills:
+        cat = skill.category or "Uncategorized"
+        if category and cat != category:
+            continue
+        pathways[cat].append(PathwaySkillResponse(
+            skill_id=skill.id,
+            skill_name=skill.name,
+            skill_category=skill.category,
+            band_requirements=skill_requirements[skill.id],
+        ))
+    
+    # Sort skills within each category
+    for cat in pathways:
+        pathways[cat].sort(key=lambda x: x.skill_name)
+    
+    return dict(pathways)
+
+
+@router.post("/bulk-update/{skill_id}")
+def bulk_update_skill_requirements(
+    skill_id: int,
+    update: BulkUpdateRequest,
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """Bulk update requirements for a skill across all bands (admin only).
+    
+    This will create, update, or delete requirements as needed.
+    """
+    # Verify skill exists
+    skill = db.query(Skill).filter(Skill.id == skill_id).first()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    
+    # Get existing requirements for this skill
+    existing = db.query(RoleRequirement).filter(RoleRequirement.skill_id == skill_id).all()
+    existing_map = {req.band: req for req in existing}
+    
+    created = 0
+    updated = 0
+    deleted = 0
+    
+    for band in BANDS:
+        rating = update.band_requirements.get(band)
+        existing_req = existing_map.get(band)
+        
+        if rating:
+            # Validate rating
+            try:
+                rating_enum = RatingEnum(rating)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid rating: {rating}")
+            
+            if existing_req:
+                # Update existing
+                existing_req.required_rating = rating_enum
+                updated += 1
+            else:
+                # Create new
+                new_req = RoleRequirement(
+                    band=band,
+                    skill_id=skill_id,
+                    required_rating=rating_enum,
+                    is_required=True,
+                )
+                db.add(new_req)
+                created += 1
+        elif existing_req:
+            # Delete if no rating provided but exists
+            db.delete(existing_req)
+            deleted += 1
+    
+    db.commit()
+    
+    return {
+        "message": f"Updated requirements for {skill.name}",
+        "created": created,
+        "updated": updated,
+        "deleted": deleted,
+    }
+
+
+@router.post("/add-skill")
+def add_skill_to_pathway(
+    skill_id: int,
+    category: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """Add a skill to career pathways with default requirements (admin only).
+    
+    Creates default requirements for all bands based on progression:
+    A=Beginner, B=Developing, C=Intermediate, L1=Advanced, L2+=Expert
+    """
+    # Verify skill exists
+    skill = db.query(Skill).filter(Skill.id == skill_id).first()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    
+    # Check if skill already has requirements
+    existing = db.query(RoleRequirement).filter(RoleRequirement.skill_id == skill_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Skill already has pathway requirements")
+    
+    # Default progression
+    default_ratings = {
+        "A": RatingEnum.BEGINNER,
+        "B": RatingEnum.DEVELOPING,
+        "C": RatingEnum.INTERMEDIATE,
+        "L1": RatingEnum.ADVANCED,
+        "L2": RatingEnum.EXPERT,
+        "L3": RatingEnum.EXPERT,
+        "U": RatingEnum.EXPERT,
+    }
+    
+    for band, rating in default_ratings.items():
+        req = RoleRequirement(
+            band=band,
+            skill_id=skill_id,
+            required_rating=rating,
+            is_required=True,
+        )
+        db.add(req)
+    
+    db.commit()
+    
+    return {
+        "message": f"Added {skill.name} to career pathways with default requirements",
+        "skill_id": skill_id,
+        "skill_name": skill.name,
+    }
+
+
+@router.delete("/remove-skill/{skill_id}")
+def remove_skill_from_pathway(
+    skill_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """Remove a skill from career pathways (delete all band requirements) (admin only)."""
+    # Verify skill exists
+    skill = db.query(Skill).filter(Skill.id == skill_id).first()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    
+    # Delete all requirements for this skill
+    deleted = db.query(RoleRequirement).filter(RoleRequirement.skill_id == skill_id).delete()
+    db.commit()
+    
+    return {
+        "message": f"Removed {skill.name} from career pathways",
+        "deleted_requirements": deleted,
+    }
+
+
+@router.post("/add-all-skills")
+def add_all_skills_to_pathways(
+    pathway: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """Add skills to career pathways with default requirements (admin only).
+    
+    If pathway is provided, only adds skills from that pathway's category template.
+    Otherwise, adds ALL skills.
+    Skills are organized by their skill category.
+    """
+    # Get skills based on pathway filter
+    if pathway:
+        # Get skills from the category template for this pathway
+        template_skills = (
+            db.query(Skill)
+            .join(CategorySkillTemplate, CategorySkillTemplate.skill_id == Skill.id)
+            .filter(CategorySkillTemplate.category == pathway)
+            .all()
+        )
+        all_skills = template_skills
+    else:
+        # Get all skills
+        all_skills = db.query(Skill).all()
+    
+    # Get skills that already have requirements
+    existing_skill_ids = set(
+        req.skill_id for req in db.query(RoleRequirement.skill_id).distinct().all()
+    )
+    
+    # Default progression
+    default_ratings = {
+        "A": RatingEnum.BEGINNER,
+        "B": RatingEnum.DEVELOPING,
+        "C": RatingEnum.INTERMEDIATE,
+        "L1": RatingEnum.ADVANCED,
+        "L2": RatingEnum.EXPERT,
+        "L3": RatingEnum.EXPERT,
+        "U": RatingEnum.EXPERT,
+    }
+    
+    added_count = 0
+    skipped_count = 0
+    added_skills = []
+    
+    for skill in all_skills:
+        if skill.id in existing_skill_ids:
+            skipped_count += 1
+            continue
+        
+        # Add requirements for all bands
+        for band, rating in default_ratings.items():
+            req = RoleRequirement(
+                band=band,
+                skill_id=skill.id,
+                required_rating=rating,
+                is_required=True,
+            )
+            db.add(req)
+        
+        added_count += 1
+        added_skills.append({
+            "skill_id": skill.id,
+            "skill_name": skill.name,
+            "category": skill.category or "Uncategorized",
+        })
+    
+    db.commit()
+    
+    pathway_msg = f" from pathway '{pathway}'" if pathway else ""
+    return {
+        "message": f"Added {added_count} skills{pathway_msg} to career pathways with default requirements",
+        "added": added_count,
+        "skipped": skipped_count,
+        "added_skills": added_skills,
+        "pathway": pathway,
+    }
+
+
+@router.get("/pathways-list")
+def get_pathways_list(
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """Get list of all available pathways (employee categories) with skill counts."""
+    # Get all distinct categories from CategorySkillTemplate
+    categories = (
+        db.query(CategorySkillTemplate.category)
+        .distinct()
+        .all()
+    )
+    
+    result = []
+    for (category,) in categories:
+        # Count total skills in this pathway
+        total_skills = (
+            db.query(CategorySkillTemplate)
+            .filter(CategorySkillTemplate.category == category)
+            .count()
+        )
+        
+        # Count skills already in role requirements
+        skills_in_requirements = (
+            db.query(RoleRequirement.skill_id)
+            .join(CategorySkillTemplate, CategorySkillTemplate.skill_id == RoleRequirement.skill_id)
+            .filter(CategorySkillTemplate.category == category)
+            .distinct()
+            .count()
+        )
+        
+        # Get skill categories within this pathway
+        skill_categories = (
+            db.query(Skill.category)
+            .join(CategorySkillTemplate, CategorySkillTemplate.skill_id == Skill.id)
+            .filter(CategorySkillTemplate.category == category)
+            .filter(Skill.category.isnot(None))
+            .distinct()
+            .all()
+        )
+        
+        result.append({
+            "pathway": category,
+            "total_skills": total_skills,
+            "skills_in_requirements": skills_in_requirements,
+            "skills_remaining": total_skills - skills_in_requirements,
+            "skill_categories": [cat[0] for cat in skill_categories if cat[0]],
+        })
+    
+    return result
+
+
+@router.get("/pathway/{pathway_name}/skills")
+def get_pathway_skills(
+    pathway_name: str,
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """Get skills for a specific pathway grouped by skill category.
+    
+    Returns only skills that:
+    1. Belong to the pathway's category template
+    2. Have role requirements configured
+    """
+    # Get all skill IDs in this pathway's template
+    template_skill_ids = (
+        db.query(CategorySkillTemplate.skill_id)
+        .filter(CategorySkillTemplate.category == pathway_name)
+        .all()
+    )
+    template_skill_ids = [s[0] for s in template_skill_ids]
+    
+    if not template_skill_ids:
+        return {}
+    
+    # Get role requirements for these skills
+    requirements = (
+        db.query(RoleRequirement)
+        .filter(RoleRequirement.skill_id.in_(template_skill_ids))
+        .all()
+    )
+    
+    # Build a map of skill_id -> {band -> rating}
+    skill_requirements: Dict[int, Dict[str, str]] = defaultdict(dict)
+    for req in requirements:
+        skill_requirements[req.skill_id][req.band] = req.required_rating.value
+    
+    # Get skills that have requirements
+    skill_ids_with_requirements = list(skill_requirements.keys())
+    if not skill_ids_with_requirements:
+        return {}
+    
+    skills = db.query(Skill).filter(Skill.id.in_(skill_ids_with_requirements)).all()
+    
+    # Group by skill category
+    grouped: Dict[str, List[dict]] = defaultdict(list)
+    for skill in skills:
+        cat = skill.category or "Uncategorized"
+        grouped[cat].append({
+            "skill_id": skill.id,
+            "skill_name": skill.name,
+            "skill_category": skill.category,
+            "band_requirements": skill_requirements[skill.id],
+        })
+    
+    # Sort skills within each category
+    for cat in grouped:
+        grouped[cat].sort(key=lambda x: x["skill_name"])
+    
+    return dict(grouped)

@@ -54,6 +54,8 @@ export interface Employee {
   department?: string;
   role?: string;
   team?: string;
+  band?: string;
+  category?: string;
 }
 
 export interface EmployeeSkill {
@@ -127,8 +129,9 @@ export const skillsApi = {
     const response = await api.get<Skill>(`/api/skills/${id}`);
     return response.data;
   },
-  create: async (skill: { name: string; description?: string }): Promise<Skill> => {
-    const response = await api.post<Skill>('/api/skills/', skill);
+  create: async (skill: { name: string; description?: string; category?: string }, addToCategory?: string): Promise<Skill> => {
+    const params = addToCategory ? { add_to_category: addToCategory } : {};
+    const response = await api.post<Skill>('/api/skills/', skill, { params });
     return response.data;
   },
 };
@@ -178,6 +181,10 @@ export const authApi = {
 
 // User Skills API
 export const userSkillsApi = {
+  getMyEmployee: async (): Promise<Employee> => {
+    const response = await api.get<Employee>('/api/user-skills/me/employee');
+    return response.data;
+  },
   getMySkills: async (): Promise<EmployeeSkill[]> => {
     const response = await api.get<EmployeeSkill[]>('/api/user-skills/me');
     return response.data;
@@ -188,6 +195,7 @@ export const userSkillsApi = {
   },
   createMySkill: async (data: {
     skill_name: string;
+    skill_category?: string;  // Optional category for the skill
     rating?: 'Beginner' | 'Developing' | 'Intermediate' | 'Advanced' | 'Expert';  // Optional for interested skills
     years_experience?: number;
     is_interested?: boolean;
@@ -565,6 +573,100 @@ export const learningApi = {
     }>;
   }>> => {
     const response = await api.get('/api/learning/skill-gap-report');
+    return response.data;
+  },
+};
+
+// Role Requirements API (Career Pathways)
+export interface RoleRequirement {
+  id: number;
+  band: string;
+  skill_id: number;
+  skill_name: string;
+  required_rating: string;
+  is_required: boolean;
+}
+
+export interface PathwaySkill {
+  skill_id: number;
+  skill_name: string;
+  skill_category?: string;
+  band_requirements: Record<string, string>; // band -> required_rating
+}
+
+export const roleRequirementsApi = {
+  getAll: async (band?: string, skillId?: number): Promise<RoleRequirement[]> => {
+    const params: any = {};
+    if (band) params.band = band;
+    if (skillId) params.skill_id = skillId;
+    const response = await api.get<RoleRequirement[]>('/api/role-requirements', { params });
+    return response.data;
+  },
+
+  create: async (data: {
+    band: string;
+    skill_id: number;
+    required_rating: string;
+    is_required?: boolean;
+  }): Promise<RoleRequirement> => {
+    const response = await api.post<RoleRequirement>('/api/role-requirements', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: {
+    band: string;
+    skill_id: number;
+    required_rating: string;
+    is_required?: boolean;
+  }): Promise<RoleRequirement> => {
+    const response = await api.put<RoleRequirement>(`/api/role-requirements/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/role-requirements/${id}`);
+  },
+
+  // Get all pathways grouped by category
+  getPathways: async (): Promise<Record<string, PathwaySkill[]>> => {
+    const response = await api.get<Record<string, PathwaySkill[]>>('/api/role-requirements/pathways');
+    return response.data;
+  },
+
+  // Bulk update requirements for a skill across all bands
+  bulkUpdateSkill: async (skillId: number, bandRequirements: Record<string, string>): Promise<{ message: string; created: number; updated: number; deleted: number }> => {
+    const response = await api.post(`/api/role-requirements/bulk-update/${skillId}`, { band_requirements: bandRequirements });
+    return response.data;
+  },
+
+  // Add a skill to pathways with default requirements
+  addSkillToPathway: async (skillId: number): Promise<{ message: string; skill_id: number; skill_name: string }> => {
+    const response = await api.post('/api/role-requirements/add-skill', null, { params: { skill_id: skillId } });
+    return response.data;
+  },
+
+  // Remove a skill from pathways
+  removeSkillFromPathway: async (skillId: number): Promise<{ message: string; deleted_requirements: number }> => {
+    const response = await api.delete(`/api/role-requirements/remove-skill/${skillId}`);
+    return response.data;
+  },
+
+  // Add ALL skills to pathways with default requirements
+  addAllSkillsToPathways: async (pathway?: string): Promise<{ message: string; added: number; skipped: number; added_skills: Array<{ skill_id: number; skill_name: string; category: string }>; pathway?: string }> => {
+    const params = pathway ? { pathway } : {};
+    const response = await api.post('/api/role-requirements/add-all-skills', null, { params });
+    return response.data;
+  },
+
+  // Get list of available pathways with skill counts
+  getPathwaysList: async (): Promise<Array<{ pathway: string; total_skills: number; skills_in_requirements: number; skills_remaining: number; skill_categories: string[] }>> => {
+    const response = await api.get('/api/role-requirements/pathways-list');
+    return response.data;
+  },
+
+  // Get skills for a specific pathway grouped by skill category
+  getPathwaySkills: async (pathwayName: string): Promise<Record<string, PathwaySkill[]>> => {
+    const response = await api.get(`/api/role-requirements/pathway/${encodeURIComponent(pathwayName)}/skills`);
     return response.data;
   },
 };

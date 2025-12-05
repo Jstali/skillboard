@@ -3,11 +3,27 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.db import database, crud
-from app.schemas import EmployeeSkill, EmployeeSkillCreate, EmployeeSkillCreateMe, EmployeeSkillUpdate
+from app.schemas import EmployeeSkill, EmployeeSkillCreate, EmployeeSkillCreateMe, EmployeeSkillUpdate, Employee
 from app.db.models import RatingEnum, EmployeeSkill as EmployeeSkillModel, User
 from app.api.dependencies import get_current_active_user
 
 router = APIRouter(prefix="/api/user-skills", tags=["user-skills"])
+
+
+@router.get("/me/employee", response_model=Employee)
+def get_my_employee(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(database.get_db),
+):
+    """Get employee details for the current logged-in user."""
+    if not current_user.employee_id:
+        raise HTTPException(status_code=400, detail="User is not linked to an employee")
+    
+    employee = crud.get_employee_by_id(db, current_user.employee_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    
+    return employee
 
 
 @router.get("/me", response_model=List[EmployeeSkill])
@@ -50,8 +66,8 @@ def create_my_skill(
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     
-    # Get or create skill
-    skill = crud.upsert_skill(db, employee_skill.skill_name)
+    # Get or create skill (with optional category)
+    skill = crud.upsert_skill(db, employee_skill.skill_name, category=employee_skill.skill_category)
     
     # Validate skill is in employee's category template if category is set and not a custom skill
     is_custom = employee_skill.is_custom or False

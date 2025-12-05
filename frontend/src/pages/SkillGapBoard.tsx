@@ -13,6 +13,8 @@ export const SkillGapBoard: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [planToClose, setPlanToClose] = useState<Record<number, string>>({});
+  const [targetDates, setTargetDates] = useState<Record<number, string>>({});
+  const [editingSkill, setEditingSkill] = useState<number | null>(null);
   const navigate = useNavigate();
   const user = authApi.getUser();
 
@@ -31,14 +33,24 @@ export const SkillGapBoard: React.FC = () => {
       const data = await bandsApi.getMyAnalysis();
       setAnalysis(data);
       
-      // Load existing plans from notes
+      // Load existing plans and dates from notes
       const plans: Record<number, string> = {};
+      const dates: Record<number, string> = {};
       data.skill_gaps.forEach((gap: SkillGap) => {
         if (gap.notes) {
-          plans[gap.skill_id] = gap.notes;
+          // Try to parse notes as JSON to extract plan and date
+          try {
+            const parsed = JSON.parse(gap.notes);
+            if (parsed.plan) plans[gap.skill_id] = parsed.plan;
+            if (parsed.targetDate) dates[gap.skill_id] = parsed.targetDate;
+          } catch {
+            // If not JSON, treat as plain text plan
+            plans[gap.skill_id] = gap.notes;
+          }
         }
       });
       setPlanToClose(plans);
+      setTargetDates(dates);
     } catch (err) {
       console.error('Failed to load band analysis:', err);
       setError(err instanceof Error ? err.message : 'Failed to load band analysis');
@@ -110,17 +122,32 @@ export const SkillGapBoard: React.FC = () => {
 
   const handlePlanBlur = async (skillId: number, employeeSkillId: number) => {
     const plan = planToClose[skillId];
-    if (plan === undefined) return; // No changes made
+    const targetDate = targetDates[skillId];
     
     try {
-      // Update the employee skill with the plan in the notes field
-      await userSkillsApi.updateMySkill(employeeSkillId, {
-        notes: plan
+      // Save plan and target date as JSON in notes field
+      const notesData = JSON.stringify({
+        plan: plan || '',
+        targetDate: targetDate || ''
       });
+      
+      await userSkillsApi.updateMySkill(employeeSkillId, {
+        notes: notesData
+      });
+      
+      // Exit edit mode
+      setEditingSkill(null);
     } catch (err) {
       console.error('Failed to save plan:', err);
       // Optionally show error to user
     }
+  };
+
+  const handleDateChange = (skillId: number, date: string) => {
+    setTargetDates(prev => ({
+      ...prev,
+      [skillId]: date
+    }));
   };
 
   if (loading) {
@@ -386,14 +413,64 @@ export const SkillGapBoard: React.FC = () => {
                       </td>
                       <td className="px-4 py-4">
                         {gap.gap < 0 ? (
-                          <input
-                            type="text"
-                            value={planToClose[gap.skill_id] || ''}
-                            onChange={(e) => handlePlanChange(gap.skill_id, e.target.value)}
-                            onBlur={() => handlePlanBlur(gap.skill_id, gap.employee_skill_id)}
-                            placeholder="Enter your plan..."
-                            className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                          />
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 space-y-2">
+                              {editingSkill === gap.skill_id ? (
+                                <>
+                                  <input
+                                    type="text"
+                                    value={planToClose[gap.skill_id] || ''}
+                                    onChange={(e) => handlePlanChange(gap.skill_id, e.target.value)}
+                                    placeholder="Enter your plan..."
+                                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                                  />
+                                  <input
+                                    type="date"
+                                    value={targetDates[gap.skill_id] || ''}
+                                    onChange={(e) => handleDateChange(gap.skill_id, e.target.value)}
+                                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                                  />
+                                </>
+                              ) : (
+                                <>
+                                  <div className="text-sm text-gray-900">
+                                    {planToClose[gap.skill_id] || <span className="text-gray-400 italic">No plan set</span>}
+                                  </div>
+                                  {targetDates[gap.skill_id] && (
+                                    <div className="text-xs text-gray-600 flex items-center gap-1">
+                                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                                      </svg>
+                                      Target: {new Date(targetDates[gap.skill_id]).toLocaleDateString()}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              {editingSkill === gap.skill_id ? (
+                                <button
+                                  onClick={() => handlePlanBlur(gap.skill_id, gap.employee_skill_id)}
+                                  className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                                  title="Save"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => setEditingSkill(gap.skill_id)}
+                                  className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                  title="Edit"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         ) : (
                           <span className="text-gray-400 text-sm text-center block">-</span>
                         )}

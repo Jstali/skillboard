@@ -1,7 +1,7 @@
 /** Employee Dashboard - Unified landing page with profile, skills, and learning. */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi, bandsApi, learningApi, userSkillsApi, BandAnalysis, CourseAssignment, EmployeeSkill } from '../services/api';
+import { authApi, bandsApi, learningApi, userSkillsApi, BandAnalysis, CourseAssignment, EmployeeSkill, Employee } from '../services/api';
 import NxzenLogo from '../images/Nxzen.jpg';
 
 export const EmployeeDashboard: React.FC = () => {
@@ -9,11 +9,14 @@ export const EmployeeDashboard: React.FC = () => {
   const [analysis, setAnalysis] = useState<BandAnalysis | null>(null);
   const [assignments, setAssignments] = useState<CourseAssignment[]>([]);
   const [skills, setSkills] = useState<EmployeeSkill[]>([]);
+  const [employee, setEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'below' | 'at' | 'above'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [planToClose, setPlanToClose] = useState<Record<number, string>>({});
+  const [targetDates, setTargetDates] = useState<Record<number, string>>({});
+  const [editingSkill, setEditingSkill] = useState<number | null>(null);
   // Custom skill form state
   const [customSkillName, setCustomSkillName] = useState('');
   const [customSkillCategory, setCustomSkillCategory] = useState('');
@@ -24,6 +27,12 @@ export const EmployeeDashboard: React.FC = () => {
   const [interestedSkillName, setInterestedSkillName] = useState('');
   const [interestedSkillCategory, setInterestedSkillCategory] = useState('');
   const [addingInterestedSkill, setAddingInterestedSkill] = useState(false);
+  // Modal states
+  const [showCustomSkillModal, setShowCustomSkillModal] = useState(false);
+  const [showInterestedSkillModal, setShowInterestedSkillModal] = useState(false);
+  // Accordion states - closed by default
+  const [customSkillsExpanded, setCustomSkillsExpanded] = useState(false);
+  const [interestedSkillsExpanded, setInterestedSkillsExpanded] = useState(false);
   const navigate = useNavigate();
   const user = authApi.getUser();
 
@@ -40,21 +49,31 @@ export const EmployeeDashboard: React.FC = () => {
       setLoading(true);
       
       if (activeTab === 'profile' || activeTab === 'career') {
-        const [analysisData, skillsData] = await Promise.all([
+        const [analysisData, skillsData, employeeData] = await Promise.all([
           bandsApi.getMyAnalysis(),
-          userSkillsApi.getMySkills()
+          userSkillsApi.getMySkills(),
+          userSkillsApi.getMyEmployee()
         ]);
         setAnalysis(analysisData);
         setSkills(skillsData);
+        setEmployee(employeeData);
         
-        // Load existing plans from notes
+        // Load existing plans and dates from notes
         const plans: Record<number, string> = {};
+        const dates: Record<number, string> = {};
         analysisData.skill_gaps.forEach((gap) => {
           if (gap.notes) {
-            plans[gap.skill_id] = gap.notes;
+            try {
+              const parsed = JSON.parse(gap.notes);
+              if (parsed.plan) plans[gap.skill_id] = parsed.plan;
+              if (parsed.targetDate) dates[gap.skill_id] = parsed.targetDate;
+            } catch {
+              plans[gap.skill_id] = gap.notes;
+            }
           }
         });
         setPlanToClose(plans);
+        setTargetDates(dates);
       }
       
       if (activeTab === 'learning') {
@@ -77,15 +96,29 @@ export const EmployeeDashboard: React.FC = () => {
 
   const handlePlanBlur = async (skillId: number, employeeSkillId: number) => {
     const plan = planToClose[skillId];
-    if (plan === undefined) return;
+    const targetDate = targetDates[skillId];
     
     try {
-      await userSkillsApi.updateMySkill(employeeSkillId, {
-        notes: plan
+      const notesData = JSON.stringify({
+        plan: plan || '',
+        targetDate: targetDate || ''
       });
+      
+      await userSkillsApi.updateMySkill(employeeSkillId, {
+        notes: notesData
+      });
+      
+      setEditingSkill(null);
     } catch (err) {
       console.error('Failed to save plan:', err);
     }
+  };
+
+  const handleDateChange = (skillId: number, date: string) => {
+    setTargetDates(prev => ({
+      ...prev,
+      [skillId]: date
+    }));
   };
 
   const handleAddCustomSkill = async () => {
@@ -94,6 +127,7 @@ export const EmployeeDashboard: React.FC = () => {
     try {
       await userSkillsApi.createMySkill({
         skill_name: customSkillName.trim(),
+        skill_category: customSkillCategory.trim() || undefined,
         rating: customSkillRating as any,
         is_interested: false,
         is_custom: true,
@@ -118,6 +152,7 @@ export const EmployeeDashboard: React.FC = () => {
     try {
       await userSkillsApi.createMySkill({
         skill_name: interestedSkillName.trim(),
+        skill_category: interestedSkillCategory.trim() || undefined,
         is_interested: true,
         is_custom: true,
       });
@@ -327,8 +362,8 @@ export const EmployeeDashboard: React.FC = () => {
         {activeTab === 'profile' && (
           <div className="space-y-6">
             {/* Profile Card */}
-            <div className="bg-white rounded-md shadow-sm p-3">
-              <div className="flex items-center gap-3 mb-3">
+            <div className="bg-white rounded-md shadow-sm p-4">
+              <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-gray-600">
                     <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
@@ -340,27 +375,45 @@ export const EmployeeDashboard: React.FC = () => {
                     : analysis?.employee_name || 'Employee'}
                 </h2>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                <div>
-                  <div className="text-xs text-gray-500 uppercase">Career Level</div>
-                  <div className="text-sm font-semibold text-gray-900">{analysis?.band || 'L1'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 uppercase">Employee ID</div>
-                  <div className="text-sm font-semibold text-gray-900">{analysis?.employee_id || user?.employee_id || '-'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 uppercase">Location</div>
-                  <div className="text-sm font-semibold text-gray-900">Remote</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 uppercase">Line Manager</div>
-                  <div className="text-sm font-semibold text-gray-900">-</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 uppercase">Expertise</div>
-                  <div className="text-sm font-semibold text-gray-900">Digital & Programming</div>
-                </div>
+              
+              {/* Profile Details Table */}
+              <div className="border border-gray-200 rounded-md overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50 w-1/3">Name</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        {employee?.name || analysis?.employee_name || '-'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Line Manager</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        {employee?.department || '-'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Country</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">India</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Band</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">{employee?.band || analysis?.band || 'L1'}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Role Title</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        {employee?.role || 'Consultant'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Current Project / Investment Bank</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        {employee?.department || 'UKPN'}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -488,149 +541,295 @@ export const EmployeeDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Add Custom Skill & Interested Skill Forms */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Add Custom Skill */}
-              <div className="bg-white rounded-md shadow-sm p-4">
-                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-green-600">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            {/* Skills & Proficiency Section */}
+            <div className="bg-white rounded-md shadow-sm p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-900">Skills & Proficiency</h3>
+                <button
+                  onClick={() => navigate('/skill-browser')}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
                   </svg>
-                  Add Custom Skill
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Skill Name *</label>
-                    <input
-                      type="text"
-                      value={customSkillName}
-                      onChange={(e) => setCustomSkillName(e.target.value)}
-                      placeholder="e.g., Machine Learning"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                    <input
-                      type="text"
-                      value={customSkillCategory}
-                      onChange={(e) => setCustomSkillCategory(e.target.value)}
-                      placeholder="e.g., Data Science"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Proficiency Level</label>
-                    <select
-                      value={customSkillRating}
-                      onChange={(e) => setCustomSkillRating(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    >
-                      <option value="Beginner">Beginner</option>
-                      <option value="Developing">Developing</option>
-                      <option value="Intermediate">Intermediate</option>
-                      <option value="Advanced">Advanced</option>
-                      <option value="Expert">Expert</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Certificate URL (Optional)</label>
-                    <input
-                      type="text"
-                      value={customSkillCertificate}
-                      onChange={(e) => setCustomSkillCertificate(e.target.value)}
-                      placeholder="https://certificate-link.com"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
-                  <button
-                    onClick={handleAddCustomSkill}
-                    disabled={!customSkillName.trim() || addingCustomSkill}
-                    className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
-                  >
-                    {addingCustomSkill ? 'Adding...' : 'Add Custom Skill'}
-                  </button>
-                </div>
-
-                {/* Existing Custom Skills */}
-                {skills.filter(s => !s.is_interested && s.is_custom).length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Your Custom Skills ({skills.filter(s => !s.is_interested && s.is_custom).length})</h4>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {skills.filter(s => !s.is_interested && s.is_custom).map((skill) => (
-                        <div key={skill.id} className="flex items-center justify-between p-2 bg-green-50 rounded-md">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 truncate">{skill.skill?.name}</div>
-                            {skill.skill?.category && <div className="text-xs text-green-700">{skill.skill.category}</div>}
-                          </div>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getSkillLevelColor(skill.rating || undefined)}`}>
-                            {skill.rating || 'N/A'}
-                          </span>
-                        </div>
-                      ))}
+                  Edit Skills
+                </button>
+              </div>
+              
+              {loading ? (
+                <div className="text-center py-8 text-gray-500">Loading skills...</div>
+              ) : skills.filter(s => !s.is_interested && !s.is_custom).length === 0 ? (
+                <div className="text-center py-8 text-gray-500">No skills added yet</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {skills.filter(s => !s.is_interested && !s.is_custom).map((skill) => (
+                    <div key={skill.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900">{skill.skill?.name}</div>
+                        {skill.skill?.category && <div className="text-xs text-gray-500">{skill.skill.category}</div>}
+                      </div>
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getSkillLevelColor(skill.rating || undefined)}`}>
+                        {skill.rating || 'N/A'}
+                      </span>
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Custom Skills & Interested Skills - Accordion Style */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Custom Skills Accordion */}
+              <div className="bg-gray-50 rounded-md overflow-hidden">
+                <div className="w-full flex items-center justify-between p-4 hover:bg-gray-100 transition-colors">
+                  <button
+                    onClick={() => setCustomSkillsExpanded(!customSkillsExpanded)}
+                    className="flex items-center gap-2 flex-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-green-600">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <h3 className="text-lg font-bold text-gray-900">Custom Skills</h3>
+                    <span className="text-sm font-normal text-gray-500">({skills.filter(s => !s.is_interested && s.is_custom).length})</span>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowCustomSkillModal(true)}
+                      className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium flex items-center gap-1"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                      </svg>
+                      Add
+                    </button>
+                    <button
+                      onClick={() => setCustomSkillsExpanded(!customSkillsExpanded)}
+                      className="p-1"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-5 h-5 text-gray-500 transition-transform ${customSkillsExpanded ? 'rotate-180' : ''}`}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                
+                {customSkillsExpanded && (
+                  <div className="px-4 pb-4">
+                    {skills.filter(s => !s.is_interested && s.is_custom).length === 0 ? (
+                      <div className="text-center py-6 text-gray-500">
+                        <p className="text-sm">No custom skills added yet</p>
+                        <p className="text-xs mt-1">Add skills that are not in your template</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {skills.filter(s => !s.is_interested && s.is_custom).map((skill) => (
+                          <div key={skill.id} className="flex items-center justify-between p-3 bg-white rounded-md border border-green-100">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-gray-900">{skill.skill?.name}</div>
+                              {skill.skill?.category && <div className="text-xs text-gray-500">{skill.skill.category}</div>}
+                            </div>
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${getSkillLevelColor(skill.rating || undefined)}`}>
+                              {skill.rating || 'N/A'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Add Interested Skill */}
-              <div className="bg-white rounded-md shadow-sm p-4">
-                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-blue-600">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-                  </svg>
-                  Add Interested Skill
-                </h3>
-                <p className="text-sm text-gray-500 mb-4">Add skills you want to learn or develop</p>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Skill Name *</label>
-                    <input
-                      type="text"
-                      value={interestedSkillName}
-                      onChange={(e) => setInterestedSkillName(e.target.value)}
-                      placeholder="e.g., Kubernetes"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                    <input
-                      type="text"
-                      value={interestedSkillCategory}
-                      onChange={(e) => setInterestedSkillCategory(e.target.value)}
-                      placeholder="e.g., DevOps"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
+              {/* Interested Skills Accordion */}
+              <div className="bg-gray-50 rounded-md overflow-hidden">
+                <div className="w-full flex items-center justify-between p-4 hover:bg-gray-100 transition-colors">
                   <button
-                    onClick={handleAddInterestedSkill}
+                    onClick={() => setInterestedSkillsExpanded(!interestedSkillsExpanded)}
+                    className="flex items-center gap-2 flex-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-blue-600">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                    </svg>
+                    <h3 className="text-lg font-bold text-gray-900">Interested Skills</h3>
+                    <span className="text-sm font-normal text-gray-500">({skills.filter(s => s.is_interested).length})</span>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowInterestedSkillModal(true)}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center gap-1"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                      </svg>
+                      Add
+                    </button>
+                    <button
+                      onClick={() => setInterestedSkillsExpanded(!interestedSkillsExpanded)}
+                      className="p-1"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-5 h-5 text-gray-500 transition-transform ${interestedSkillsExpanded ? 'rotate-180' : ''}`}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                
+                {interestedSkillsExpanded && (
+                  <div className="px-4 pb-4">
+                    {skills.filter(s => s.is_interested).length === 0 ? (
+                      <div className="text-center py-6 text-gray-500">
+                        <p className="text-sm">No interested skills added yet</p>
+                        <p className="text-xs mt-1">Add skills you want to learn</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {skills.filter(s => s.is_interested).map((skill) => (
+                          <div key={skill.id} className="flex items-center justify-between p-3 bg-white rounded-md border border-blue-100">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-gray-900">{skill.skill?.name}</div>
+                              {skill.skill?.category && <div className="text-xs text-blue-600">{skill.skill.category}</div>}
+                            </div>
+                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                              Interested
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Skill Modal */}
+        {showCustomSkillModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h2 className="text-xl font-bold mb-4">Add Custom Skill</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Skill Name *</label>
+                  <input
+                    type="text"
+                    value={customSkillName}
+                    onChange={(e) => setCustomSkillName(e.target.value)}
+                    placeholder="e.g., Machine Learning"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category (Optional)</label>
+                  <input
+                    type="text"
+                    value={customSkillCategory}
+                    onChange={(e) => setCustomSkillCategory(e.target.value)}
+                    placeholder="e.g., Data Science, DevOps, Cloud"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Proficiency Level</label>
+                  <select
+                    value={customSkillRating}
+                    onChange={(e) => setCustomSkillRating(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  >
+                    <option value="Beginner">Beginner</option>
+                    <option value="Developing">Developing</option>
+                    <option value="Intermediate">Intermediate</option>
+                    <option value="Advanced">Advanced</option>
+                    <option value="Expert">Expert</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Certificate URL (Optional)</label>
+                  <input
+                    type="text"
+                    value={customSkillCertificate}
+                    onChange={(e) => setCustomSkillCertificate(e.target.value)}
+                    placeholder="https://certificate-link.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={async () => {
+                      await handleAddCustomSkill();
+                      setShowCustomSkillModal(false);
+                    }}
+                    disabled={!customSkillName.trim() || addingCustomSkill}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 font-medium"
+                  >
+                    {addingCustomSkill ? 'Adding...' : 'Add Skill'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCustomSkillModal(false);
+                      setCustomSkillName('');
+                      setCustomSkillCategory('');
+                      setCustomSkillRating('Beginner');
+                      setCustomSkillCertificate('');
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Interested Skill Modal */}
+        {showInterestedSkillModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h2 className="text-xl font-bold mb-4">Add Interested Skill</h2>
+              <p className="text-sm text-gray-500 mb-4">Add a skill you want to learn or develop</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Skill Name *</label>
+                  <input
+                    type="text"
+                    value={interestedSkillName}
+                    onChange={(e) => setInterestedSkillName(e.target.value)}
+                    placeholder="e.g., Kubernetes"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category (Optional)</label>
+                  <input
+                    type="text"
+                    value={interestedSkillCategory}
+                    onChange={(e) => setInterestedSkillCategory(e.target.value)}
+                    placeholder="e.g., DevOps, Cloud, Programming"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={async () => {
+                      await handleAddInterestedSkill();
+                      setShowInterestedSkillModal(false);
+                    }}
                     disabled={!interestedSkillName.trim() || addingInterestedSkill}
-                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium"
                   >
                     {addingInterestedSkill ? 'Adding...' : 'Add to Interests'}
                   </button>
+                  <button
+                    onClick={() => {
+                      setShowInterestedSkillModal(false);
+                      setInterestedSkillName('');
+                      setInterestedSkillCategory('');
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 font-medium"
+                  >
+                    Cancel
+                  </button>
                 </div>
-
-                {/* Existing Interested Skills */}
-                {skills.filter(s => s.is_interested).length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Your Interested Skills ({skills.filter(s => s.is_interested).length})</h4>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {skills.filter(s => s.is_interested).map((skill) => (
-                        <div key={skill.id} className="flex items-center justify-between p-2 bg-blue-50 rounded-md">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 truncate">{skill.skill?.name}</div>
-                            {skill.skill?.category && <div className="text-xs text-blue-700">{skill.skill.category}</div>}
-                          </div>
-                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
-                            Interested
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -651,7 +850,7 @@ export const EmployeeDashboard: React.FC = () => {
                 <div className="text-xl font-bold text-gray-900">{analysis?.total_skills || 0}</div>
               </div>
               <div className="bg-white rounded-md shadow-sm p-3">
-                <div className="text-xs text-gray-500 uppercase mb-1">Skills Below</div>
+                <div className="text-xs text-gray-500 uppercase mb-1">Skills Below Requirement </div>
                 <div className="text-xl font-bold text-yellow-600">{analysis?.skills_below_requirement || 0}</div>
               </div>
             </div>
@@ -785,14 +984,64 @@ export const EmployeeDashboard: React.FC = () => {
                           </td>
                           <td className="px-3 py-3">
                             {gap.gap < 0 ? (
-                              <input
-                                type="text"
-                                value={planToClose[gap.skill_id] || gap.notes || ''}
-                                onChange={(e) => handlePlanChange(gap.skill_id, e.target.value)}
-                                onBlur={() => handlePlanBlur(gap.skill_id, gap.employee_skill_id)}
-                                placeholder="Enter your plan..."
-                                className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
+                              <div className="flex items-start gap-2">
+                                <div className="flex-1 space-y-2">
+                                  {editingSkill === gap.skill_id ? (
+                                    <>
+                                      <input
+                                        type="text"
+                                        value={planToClose[gap.skill_id] || ''}
+                                        onChange={(e) => handlePlanChange(gap.skill_id, e.target.value)}
+                                        placeholder="Enter your plan..."
+                                        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      />
+                                      <input
+                                        type="date"
+                                        value={targetDates[gap.skill_id] || ''}
+                                        onChange={(e) => handleDateChange(gap.skill_id, e.target.value)}
+                                        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className="text-sm text-gray-900">
+                                        {planToClose[gap.skill_id] || <span className="text-gray-400 italic">No plan set</span>}
+                                      </div>
+                                      {targetDates[gap.skill_id] && (
+                                        <div className="text-xs text-gray-600 flex items-center gap-1">
+                                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                                          </svg>
+                                          Target: {new Date(targetDates[gap.skill_id]).toLocaleDateString()}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  {editingSkill === gap.skill_id ? (
+                                    <button
+                                      onClick={() => handlePlanBlur(gap.skill_id, gap.employee_skill_id)}
+                                      className="p-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                                      title="Save"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => setEditingSkill(gap.skill_id)}
+                                      className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                                      title="Edit"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             ) : (
                               <span className="text-gray-400 text-sm text-center block">-</span>
                             )}
