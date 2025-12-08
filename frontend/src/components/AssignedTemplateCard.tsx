@@ -18,11 +18,16 @@ export const AssignedTemplateCard: React.FC<AssignedTemplateCardProps> = ({
 
     const statusColor = statusColors[assignment.status] || 'bg-gray-100 text-gray-800';
 
+    // Format template name by replacing underscores with spaces
+    const formatTemplateName = (name: string) => {
+        return name.replace(/_/g, ' ');
+    };
+
     return (
         <div className="border border-gray-200 rounded-lg p-4 hover:border-purple-300 transition-colors">
             <div className="flex justify-between items-start">
                 <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">{assignment.template_name}</h3>
+                    <h3 className="font-medium text-gray-900">{formatTemplateName(assignment.template_name)}</h3>
                     <p className="text-sm text-gray-500 mt-1">
                         Assigned: {new Date(assignment.assigned_at).toLocaleDateString()}
                     </p>

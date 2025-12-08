@@ -95,15 +95,21 @@ async def get_my_assignments(
     Get employee's pending and completed assignments.
     HR category is HIDDEN from employee.
     """
+    print(f"DEBUG: get_my_assignments called for user {current_user.email}")
+    
     # Get employee record
     employee = db.query(Employee).filter(Employee.employee_id == current_user.employee_id).first()
     if not employee:
         raise HTTPException(status_code=404, detail="Employee record not found")
     
+    print(f"DEBUG: Found employee: {employee.name} (id={employee.id})")
+    
     # Get all assignments for this employee
     assignments = db.query(TemplateAssignment).filter(
         TemplateAssignment.employee_id == employee.id
     ).order_by(TemplateAssignment.assigned_at.desc()).all()
+    
+    print(f"DEBUG: Found {len(assignments)} total assignments")
     
     pending = []
     completed = []
@@ -113,15 +119,18 @@ async def get_my_assignments(
         
         summary = AssignmentSummary(
             id=assignment.id,
+            template_id=assignment.template_id,
             template_name=template.template_name if template else "Unknown",
             assigned_at=assignment.assigned_at,
             status=assignment.status
         )
         
-        if assignment.status == "Pending":
-            pending.append(summary)
-        else:
+        if assignment.status == "Completed":
             completed.append(summary)
+        else:
+            pending.append(summary)
+    
+    print(f"DEBUG: Returning {len(pending)} pending, {len(completed)} completed")
     
     return {
         "pending": pending,

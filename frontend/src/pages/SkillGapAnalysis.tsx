@@ -42,24 +42,67 @@ const SkillGapAnalysis: React.FC = () => {
     }, []);
 
     const loadGapData = async () => {
+        console.log('DEBUG: loadGapData function called');
         setLoading(true);
         setError(null);
 
         try {
             const token = localStorage.getItem('token');
+            console.log('DEBUG: Token exists:', !!token);
+
+            if (!token) {
+                throw new Error('No authentication token found');
+            }
+
             const headers = { Authorization: `Bearer ${token}` };
+            const apiUrl = API_URL || 'http://localhost:8000';
+
+            console.log('DEBUG: API URL:', apiUrl);
+            console.log('DEBUG: Calling with-gaps endpoint...');
 
             // Load employees with gaps
-            const withGapsRes = await axios.get(`${API_URL}/api/admin/skill-gaps/with-gaps`, { headers });
-            setEmployeesWithGaps(withGapsRes.data);
+            try {
+                const withGapsRes = await axios.get(`${apiUrl}/api/admin/skill-gaps/with-gaps`, { headers });
+                console.log('DEBUG: With gaps response status:', withGapsRes.status);
+                console.log('DEBUG: With gaps response data:', withGapsRes.data);
+                console.log('DEBUG: With gaps data type:', typeof withGapsRes.data);
+                console.log('DEBUG: With gaps is array:', Array.isArray(withGapsRes.data));
+                console.log('DEBUG: With gaps length:', withGapsRes.data?.length);
+                setEmployeesWithGaps(withGapsRes.data || []);
+            } catch (withGapsErr: any) {
+                console.error('DEBUG: Error fetching with-gaps:', withGapsErr);
+                console.error('DEBUG: Error response:', withGapsErr.response?.data);
+                console.error('DEBUG: Error status:', withGapsErr.response?.status);
+                throw withGapsErr;
+            }
+
+            console.log('DEBUG: Calling without-gaps endpoint...');
 
             // Load employees without gaps
-            const withoutGapsRes = await axios.get(`${API_URL}/api/admin/skill-gaps/without-gaps`, { headers });
-            setEmployeesWithoutGaps(withoutGapsRes.data);
+            try {
+                const withoutGapsRes = await axios.get(`${apiUrl}/api/admin/skill-gaps/without-gaps`, { headers });
+                console.log('DEBUG: Without gaps response status:', withoutGapsRes.status);
+                console.log('DEBUG: Without gaps response data:', withoutGapsRes.data);
+                console.log('DEBUG: Without gaps data type:', typeof withoutGapsRes.data);
+                console.log('DEBUG: Without gaps is array:', Array.isArray(withoutGapsRes.data));
+                console.log('DEBUG: Without gaps length:', withoutGapsRes.data?.length);
+                setEmployeesWithoutGaps(withoutGapsRes.data || []);
+            } catch (withoutGapsErr: any) {
+                console.error('DEBUG: Error fetching without-gaps:', withoutGapsErr);
+                console.error('DEBUG: Error response:', withoutGapsErr.response?.data);
+                console.error('DEBUG: Error status:', withoutGapsErr.response?.status);
+                throw withoutGapsErr;
+            }
+
+            console.log('DEBUG: Successfully loaded all gap data');
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to load gap analysis data');
+            console.error('DEBUG: Error in loadGapData:', err);
+            console.error('DEBUG: Error message:', err.message);
+            console.error('DEBUG: Error response:', err.response);
+            setError(err.response?.data?.detail || err.message || 'Failed to load gap analysis data');
         } finally {
             setLoading(false);
+            console.log('DEBUG: loadGapData completed');
         }
     };
 

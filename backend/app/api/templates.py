@@ -105,10 +105,11 @@ async def upload_template_file(
                 print(f"DEBUG: Validating structure for {sheet_name}")
                 validate_structure(rows, sheet_name)
                 
-                # Determine Template Name
-                final_name = sheet_name
+                # Determine Template Name - format by replacing underscores with spaces
+                formatted_sheet_name = sheet_name.replace('_', ' ')
+                final_name = formatted_sheet_name
                 if template_name:
-                   final_name = template_name if len(workbook.sheetnames) == 1 else f"{template_name} - {sheet_name}"
+                   final_name = template_name if len(workbook.sheetnames) == 1 else f"{template_name} - {formatted_sheet_name}"
 
                 # Create template record
                 print(f"DEBUG: Creating template record: {final_name}")
@@ -134,7 +135,9 @@ async def upload_template_file(
                 validate_structure(rows, file.filename)
                 
                 # CSV files have only one "sheet", use filename or custom name
-                final_name = template_name if template_name else file.filename.rsplit('.', 1)[0]
+                # Format by replacing underscores with spaces
+                base_name = template_name if template_name else file.filename.rsplit('.', 1)[0]
+                final_name = base_name.replace('_', ' ')
                 
                 template = SkillTemplate(
                     template_name=final_name,
@@ -162,9 +165,11 @@ async def upload_template_file(
                 
                 validate_structure(rows, sheet_name)
 
-                final_name = sheet_name
+                # Format template name: replace underscores with spaces
+                formatted_sheet_name = sheet_name.replace('_', ' ')
+                final_name = formatted_sheet_name
                 if template_name:
-                     final_name = template_name if len(ods_data) == 1 else f"{template_name} - {sheet_name}"
+                     final_name = template_name if len(ods_data) == 1 else f"{template_name} - {formatted_sheet_name}"
 
                 template = SkillTemplate(
                     template_name=final_name,
