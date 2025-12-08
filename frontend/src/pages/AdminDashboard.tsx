@@ -98,6 +98,11 @@ export const AdminDashboard: React.FC = () => {
   const [assigning, setAssigning] = useState(false);
   const [assignmentSearchQuery, setAssignmentSearchQuery] = useState('');
 
+  // Skills Modal States
+  const [showSkillsModal, setShowSkillsModal] = useState(false);
+  const [selectedEmployeeForSkills, setSelectedEmployeeForSkills] = useState<{ employee_id: string, employee_name: string, band: string, skills: any[] } | null>(null);
+  const [loadingEmployeeSkills, setLoadingEmployeeSkills] = useState(false);
+
   useEffect(() => {
     if (!user) {
       navigate('/login');
@@ -767,7 +772,7 @@ export const AdminDashboard: React.FC = () => {
               <p className="text-3xl font-bold text-gray-900 mt-2">{stats.employees_with_existing_skills}</p>
             </div>
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-              <h3 className="text-sm font-medium text-gray-500">Total Mappings</h3>
+              <h3 className="text-sm font-medium text-gray-500">Total Skill Mappings</h3>
               <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total_skill_mappings}</p>
             </div>
           </div>
@@ -1723,6 +1728,26 @@ export const AdminDashboard: React.FC = () => {
                                   <span className="inline-block w-3 h-3 rounded-full bg-red-500"></span>
                                   <span className="text-sm text-gray-700">Below: {analysis.skills_below_requirement}</span>
                                 </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedEmployeeForSkills({
+                                      employee_id: analysis.employee_id,
+                                      employee_name: analysis.employee_name,
+                                      band: analysis.band,
+                                      skills: analysis.skill_gaps
+                                    });
+                                    setShowSkillsModal(true);
+                                  }}
+                                  className="ml-auto text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1"
+                                  title="View all skills"
+                                >
+                                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                  <span className="text-sm font-medium">View Skills</span>
+                                </button>
                               </div>
                             </div>
                             {expandedEmployees.includes(analysis.employee_id) && (
@@ -1889,6 +1914,26 @@ export const AdminDashboard: React.FC = () => {
                                   <span className="inline-block w-3 h-3 rounded-full bg-gray-300"></span>
                                   <span className="text-sm text-gray-700">Below: 0</span>
                                 </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedEmployeeForSkills({
+                                      employee_id: analysis.employee_id,
+                                      employee_name: analysis.employee_name,
+                                      band: analysis.band,
+                                      skills: analysis.skill_gaps
+                                    });
+                                    setShowSkillsModal(true);
+                                  }}
+                                  className="ml-auto text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1"
+                                  title="View all skills"
+                                >
+                                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                  <span className="text-sm font-medium">View Skills</span>
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -1899,6 +1944,157 @@ export const AdminDashboard: React.FC = () => {
                 </>
               );
             })()}
+
+            {/* Skills Modal */}
+            {showSkillsModal && selectedEmployeeForSkills && (
+              <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+                <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                  <div
+                    className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+                    aria-hidden="true"
+                    onClick={() => setShowSkillsModal(false)}
+                  ></div>
+
+                  <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                  <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
+                    {/* Header */}
+                    <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-lg font-semibold text-white" id="modal-title">
+                            {selectedEmployeeForSkills.employee_name}'s Skills
+                          </h3>
+                          <p className="text-sm text-blue-100 mt-1">
+                            Band {selectedEmployeeForSkills.band} • {selectedEmployeeForSkills.skills.length} skills
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setShowSkillsModal(false)}
+                          className="text-white hover:text-gray-200 transition-colors"
+                        >
+                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="bg-white px-6 py-4 max-h-[70vh] overflow-y-auto">
+                      {selectedEmployeeForSkills.skills.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">No skills found</div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Skill Name</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Rating</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Required Rating</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gap</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {selectedEmployeeForSkills.skills.map((skill, index) => {
+                                const getGapColor = (gap: number) => {
+                                  if (gap > 0) return 'bg-green-100 text-green-800';
+                                  if (gap === 0) return 'bg-gray-100 text-gray-800';
+                                  return 'bg-red-100 text-red-800';
+                                };
+                                const getRatingColor = (rating?: string) => {
+                                  switch (rating) {
+                                    case 'Expert': return 'bg-purple-100 text-purple-800';
+                                    case 'Advanced': return 'bg-orange-100 text-orange-800';
+                                    case 'Intermediate': return 'bg-yellow-100 text-yellow-800';
+                                    case 'Developing': return 'bg-blue-100 text-blue-800';
+                                    case 'Beginner': return 'bg-green-100 text-green-800';
+                                    case 'Not Rated': return 'bg-red-50 text-red-600 border border-red-200';
+                                    default: return 'bg-gray-100 text-gray-600';
+                                  }
+                                };
+                                const getSourceBadge = (source: string) => {
+                                  switch (source) {
+                                    case 'Template': return 'bg-blue-100 text-blue-800';
+                                    case 'Role': return 'bg-purple-100 text-purple-800';
+                                    case 'Band Default': return 'bg-gray-100 text-gray-600';
+                                    default: return 'bg-gray-100 text-gray-800';
+                                  }
+                                };
+
+                                return (
+                                  <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                      {skill.skill_name}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">
+                                      {skill.skill_category || '-'}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getSourceBadge(skill.requirement_source)}`}>
+                                        {skill.requirement_source}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">
+                                      {skill.current_rating_text ? (
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRatingColor(skill.current_rating_text)}`}>
+                                          {skill.current_rating_text} {skill.current_rating_number ? `(${skill.current_rating_number})` : ''}
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                          Not Rated
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">
+                                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRatingColor(skill.required_rating_text)}`}>
+                                        {skill.required_rating_text} ({skill.required_rating_number})
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">
+                                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getGapColor(skill.gap)}`}>
+                                        {skill.gap > 0 ? '+' : ''}{skill.gap}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">
+                                      {skill.gap < 0 ? (
+                                        <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                          Below
+                                        </span>
+                                      ) : skill.gap === 0 ? (
+                                        <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                          Met
+                                        </span>
+                                      ) : (
+                                        <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                          Exceeded
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="bg-gray-50 px-6 py-3 flex justify-end">
+                      <button
+                        onClick={() => setShowSkillsModal(false)}
+                        className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

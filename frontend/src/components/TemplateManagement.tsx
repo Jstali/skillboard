@@ -35,6 +35,9 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
     const [selectedDepartment, setSelectedDepartment] = useState('');
     const [selectedRole, setSelectedRole] = useState('');
 
+    // Toast notification state
+    const [toast, setToast] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
     // Sample Template State
     const [showSampleModal, setShowSampleModal] = useState(false);
     const [sampleTemplates, setSampleTemplates] = useState<{ template_name: string; content: any[][] }[]>([]);
@@ -307,14 +310,33 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
             }
 
             console.log('DEBUG: Assignment result:', result);
+
+            // Show success toast
+            setToast({ type: 'success', message: result.message });
+            setTimeout(() => setToast(null), 5000);
+
+            // Also call parent callback
             onUploadSuccess?.({ message: result.message } as any);
+
+            // Show errors if any
             if (result.errors && result.errors.length > 0) {
+                setToast({ type: 'error', message: `Assigned with errors: ${result.errors.join(', ')}` });
+                setTimeout(() => setToast(null), 7000);
                 onUploadError?.(`Assigned with errors: ${result.errors.join(', ')}`);
             }
+
+            // Close modal
             setShowAssignModal(false);
+
+            // Reload templates to refresh assignment counts
+            await loadTemplates();
+
         } catch (error: any) {
             console.error('DEBUG: Assignment error:', error);
-            onUploadError?.(error.response?.data?.detail || 'Failed to assign template');
+            const errorMsg = error.response?.data?.detail || 'Failed to assign template';
+            setToast({ type: 'error', message: errorMsg });
+            setTimeout(() => setToast(null), 7000);
+            onUploadError?.(errorMsg);
         } finally {
             setAssigning(false);
         }
@@ -1355,6 +1377,40 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
                                 Upload
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Toast Notification */}
+            {toast && (
+                <div className="fixed top-4 right-4 z-50 animate-slide-in">
+                    <div className={`rounded-lg shadow-lg p-4 flex items-center gap-3 min-w-[300px] max-w-md ${toast.type === 'success'
+                            ? 'bg-green-50 border border-green-200'
+                            : 'bg-red-50 border border-red-200'
+                        }`}>
+                        {toast.type === 'success' ? (
+                            <svg className="w-6 h-6 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        ) : (
+                            <svg className="w-6 h-6 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        )}
+                        <p className={`text-sm font-medium ${toast.type === 'success' ? 'text-green-800' : 'text-red-800'
+                            }`}>
+                            {toast.message}
+                        </p>
+                        <button
+                            onClick={() => setToast(null)}
+                            className={`ml-auto p-1 rounded hover:bg-opacity-20 ${toast.type === 'success' ? 'hover:bg-green-600' : 'hover:bg-red-600'
+                                }`}
+                        >
+                            <svg className={`w-4 h-4 ${toast.type === 'success' ? 'text-green-600' : 'text-red-600'
+                                }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
             )}

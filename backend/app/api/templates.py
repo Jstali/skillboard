@@ -495,14 +495,19 @@ async def assign_template_to_employees(
     Assign a template to employees.
     Can assign to specific employee IDs, OR bulk assign by department/role/team.
     """
-    print(f"DEBUG: Assignment request received")
-    print(f"DEBUG: template_id={assignment.template_id}")
-    print(f"DEBUG: employee_ids={assignment.employee_ids}")
-    print(f"DEBUG: department={assignment.department}")
-    print(f"DEBUG: role={assignment.role}")
-    print(f"DEBUG: team={assignment.team}")
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"=== ASSIGNMENT REQUEST START ===")
+    logger.info(f"User: {current_user.email} (ID: {current_user.id})")
+    logger.info(f"Template ID: {assignment.template_id}")
+    logger.info(f"Employee IDs: {assignment.employee_ids}")
+    logger.info(f"Department: {assignment.department}")
+    logger.info(f"Role: {assignment.role}")
+    logger.info(f"Team: {assignment.team}")
     
     if not current_user.is_admin:
+        logger.warning(f"Non-admin user {current_user.email} attempted assignment")
         raise HTTPException(status_code=403, detail="Admin access required")
     
     from app.db.models import TemplateAssignment, Employee
@@ -510,16 +515,19 @@ async def assign_template_to_employees(
     # Verify template exists
     template = db.query(SkillTemplate).filter(SkillTemplate.id == assignment.template_id).first()
     if not template:
+        logger.error(f"Template {assignment.template_id} not found")
         raise HTTPException(status_code=404, detail="Template not found")
+    
+    logger.info(f"Template found: {template.template_name}")
     
     # Resolve target employees
     target_employees = []
     
     if assignment.employee_ids:
         # Direct selection
-        print(f"DEBUG: Querying employees with IDs: {assignment.employee_ids}")
+        logger.info(f"Querying employees with IDs: {assignment.employee_ids}")
         target_employees = db.query(Employee).filter(Employee.id.in_(assignment.employee_ids)).all()
-        print(f"DEBUG: Found {len(target_employees)} employees")
+        logger.info(f"Found {len(target_employees)} employees: {[e.name for e in target_employees]}")
     
     elif assignment.department or assignment.role or assignment.team:
         # Filter based selection
@@ -533,8 +541,10 @@ async def assign_template_to_employees(
             query = query.filter(Employee.team == assignment.team)
             
         target_employees = query.all()
+        logger.info(f"Found {len(target_employees)} employees via filters")
     
     if not target_employees:
+        logger.warning("No employees found matching criteria")
         return {
             "message": "No employees found matching criteria",
             "assignments_created": 0,
@@ -545,35 +555,112 @@ async def assign_template_to_employees(
     errors = []
     skipped = 0
     
-    for employee in target_employees:
-        # Check if already assigned
-        existing = db.query(TemplateAssignment).filter(
-            TemplateAssignment.template_id == assignment.template_id,
-            TemplateAssignment.employee_id == employee.id
-        ).first()
-        
-        if existing:
-            skipped += 1
-            errors.append(f"{employee.name} already has this template assigned")
-            continue
-            
-        new_assignment = TemplateAssignment(
-            template_id=assignment.template_id,
-            employee_id=employee.id,
-            assigned_by=current_user.id
-        )
-        db.add(new_assignment)
-        assignments_created += 1
+    logger.info(f"Processing {len(target_employees)} employees for assignment")
     
-    db.commit()
+    for employee in target_employees:
+        try:
+            # Check if already assigned
+            existing = db.query(TemplateAssignment).filter(
+                TemplateAssignment.template_id == assignment.template_id,
+                TemplateAssignment.employee_id == employee.id
+            ).first()
+            
+            if existing:
+                skipped += 1
+                error_msg = f"{employee.name} already has this template assigned"
+                errors.append(error_msg)
+                logger.info(f"SKIP: {error_msg} (Assignment ID: {existing.id})")
+                continue
+            
+            logger.info(f"Creating assignment for employee {employee.id} ({employee.name})")
+            new_assignment = TemplateAssignment(
+                template_id=assignment.template_id,
+                employee_id=employee.id,
+                assigned_by=current_user.id
+            )
+            db.add(new_assignment)
+            db.flush()  # Flush to get the ID
+            assignments_created += 1
+            logger.info(f"SUCCESS: Created assignment ID {new_assignment.id} for {employee.name}")
+            
+        except Exception as e:
+            error_msg = f"Failed to assign to {employee.name}: {str(e)}"
+            errors.append(error_msg)
+            logger.error(error_msg, exc_info=True)
+    
+    try:
+        db.commit()
+        logger.info(f"Database commit successful. Created {assignments_created} assignments")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Database commit failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save assignments: {str(e)}")
     
     message = f"Assigned template to {assignments_created} employees"
     if skipped > 0:
         message += f" ({skipped} already assigned)"
+    
+    logger.info(f"=== ASSIGNMENT REQUEST COMPLETE ===")
+    logger.info(f"Result: {message}")
+    logger.info(f"Errors: {len(errors)}")
     
     return {
         "message": message,
         "assignments_created": assignments_created,
         "skipped": skipped,
         "errors": errors
+    }
+
+
+@router.get("/{template_id}/assignments/count")
+async def get_assignment_count(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get count of employees assigned to this template."""
+    from app.db.models import TemplateAssignment
+    
+    count = db.query(TemplateAssignment).filter(
+        TemplateAssignment.template_id == template_id
+    ).count()
+    
+    return {"template_id": template_id, "count": count}
+
+
+@router.get("/{template_id}/assignments")
+async def get_template_assignments(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get list of employees assigned to this template."""
+    from app.db.models import TemplateAssignment, Employee
+    
+    # Verify template exists
+    template = db.query(SkillTemplate).filter(SkillTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    assignments = db.query(
+        TemplateAssignment, Employee
+    ).join(
+        Employee, TemplateAssignment.employee_id == Employee.id
+    ).filter(
+        TemplateAssignment.template_id == template_id
+    ).all()
+    
+    return {
+        "template_id": template_id,
+        "template_name": template.template_name,
+        "assignments": [
+            {
+                "assignment_id": assignment.id,
+                "employee_id": employee.id,
+                "employee_name": employee.name,
+                "assigned_at": assignment.assigned_at.isoformat(),
+                "status": assignment.status
+            }
+            for assignment, employee in assignments
+        ]
     }
