@@ -80,6 +80,7 @@ class EmployeeSkillUpdate(BaseModel):
     years_experience: Optional[float] = None
     is_interested: Optional[bool] = None
     notes: Optional[str] = None
+    learning_status: Optional[str] = None
 
 
 class EmployeeSkill(EmployeeSkillBase):
@@ -89,6 +90,8 @@ class EmployeeSkill(EmployeeSkillBase):
     is_interested: bool
     notes: Optional[str] = None
     is_custom: bool
+    learning_status: str
+    status_updated_at: datetime
     employee: Employee
     skill: Skill
 

@@ -1,12 +1,18 @@
 /** Employee Dashboard - Unified landing page with profile, skills, and learning. */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi, bandsApi, learningApi, userSkillsApi, BandAnalysis, CourseAssignment, EmployeeSkill, Employee } from '../services/api';
+import { authApi, bandsApi, learningApi, userSkillsApi, employeeAssignmentsApi, BandAnalysis, CourseAssignment, EmployeeSkill, Employee, AssignedTemplate } from '../services/api';
+import { AssignedTemplateCard } from '../components/AssignedTemplateCard';
+import { TemplateFillModal } from '../components/TemplateFillModal';
+import { Button } from '../components/Button';
+import { PageHeader } from '../components/PageHeader';
+import { User, BookOpen, Target, ChevronDown, ChevronRight, Plus, X, Search, Award, GraduationCap } from 'lucide-react';
 import NxzenLogo from '../images/Nxzen.jpg';
 
 export const EmployeeDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'profile' | 'career' | 'learning'>('profile');
   const [analysis, setAnalysis] = useState<BandAnalysis | null>(null);
+  const [nextLevelAnalysis, setNextLevelAnalysis] = useState<BandAnalysis | null>(null);
   const [assignments, setAssignments] = useState<CourseAssignment[]>([]);
   const [skills, setSkills] = useState<EmployeeSkill[]>([]);
   const [employee, setEmployee] = useState<Employee | null>(null);
@@ -16,6 +22,7 @@ export const EmployeeDashboard: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [planToClose, setPlanToClose] = useState<Record<number, string>>({});
   const [targetDates, setTargetDates] = useState<Record<number, string>>({});
+  const [learningStatuses, setLearningStatuses] = useState<Record<number, string>>({});
   const [editingSkill, setEditingSkill] = useState<number | null>(null);
   // Custom skill form state
   const [customSkillName, setCustomSkillName] = useState('');
@@ -23,6 +30,9 @@ export const EmployeeDashboard: React.FC = () => {
   const [customSkillRating, setCustomSkillRating] = useState<string>('Beginner');
   const [customSkillCertificate, setCustomSkillCertificate] = useState('');
   const [addingCustomSkill, setAddingCustomSkill] = useState(false);
+  // Template assignments state
+  const [assignedTemplates, setAssignedTemplates] = useState<AssignedTemplate[]>([]);
+  const [fillingTemplateId, setFillingTemplateId] = useState<number | null>(null);
   // Interested skill form state
   const [interestedSkillName, setInterestedSkillName] = useState('');
   const [interestedSkillCategory, setInterestedSkillCategory] = useState('');
@@ -33,6 +43,7 @@ export const EmployeeDashboard: React.FC = () => {
   // Accordion states - closed by default
   const [customSkillsExpanded, setCustomSkillsExpanded] = useState(false);
   const [interestedSkillsExpanded, setInterestedSkillsExpanded] = useState(false);
+  const [templateAssignments, setTemplateAssignments] = useState<any[]>([]);
   const navigate = useNavigate();
   const user = authApi.getUser();
 
@@ -47,7 +58,7 @@ export const EmployeeDashboard: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      
+
       if (activeTab === 'profile' || activeTab === 'career') {
         const [analysisData, skillsData, employeeData] = await Promise.all([
           bandsApi.getMyAnalysis(),
@@ -57,11 +68,27 @@ export const EmployeeDashboard: React.FC = () => {
         setAnalysis(analysisData);
         setSkills(skillsData);
         setEmployee(employeeData);
-        
+
+        // Load template assignments
+        try {
+          const templatesData = await employeeAssignmentsApi.getMyAssignments();
+          setAssignedTemplates(templatesData);
+        } catch (error) {
+          console.log('Could not load template assignments:', error);
+          setAssignedTemplates([]);
+        }
+
         // Load existing plans and dates from notes
         const plans: Record<number, string> = {};
         const dates: Record<number, string> = {};
+        const statuses: Record<number, string> = {};
+
         analysisData.skill_gaps.forEach((gap) => {
+          // Status
+          if (gap.learning_status) {
+            statuses[gap.skill_id] = gap.learning_status;
+          }
+
           if (gap.notes) {
             try {
               const parsed = JSON.parse(gap.notes);
@@ -74,8 +101,22 @@ export const EmployeeDashboard: React.FC = () => {
         });
         setPlanToClose(plans);
         setTargetDates(dates);
+        setLearningStatuses(statuses);
+
+        // If Career Tab, fetch next level analysis
+        if (activeTab === 'career' && analysisData && analysisData.band) {
+          const nextBand = getNextBand(analysisData.band);
+          if (nextBand) {
+            try {
+              const nextAnalysis = await bandsApi.getMyAnalysis(nextBand);
+              setNextLevelAnalysis(nextAnalysis);
+            } catch (err) {
+              console.error("Failed to fetch next level analysis", err);
+            }
+          }
+        }
       }
-      
+
       if (activeTab === 'learning') {
         const assignmentsData = await learningApi.getMyAssignments();
         setAssignments(assignmentsData);
@@ -87,8 +128,30 @@ export const EmployeeDashboard: React.FC = () => {
     }
   };
 
+  const getNextBand = (currentBand: string): string | null => {
+    const sequence = ['A', 'B', 'C', 'L1', 'L2', 'L3', 'U'];
+    const idx = sequence.indexOf(currentBand);
+    if (idx !== -1 && idx < sequence.length - 1) {
+      return sequence[idx + 1];
+    }
+    return null;
+  };
+
+  const calculateMatchPercentage = (anal: BandAnalysis) => {
+    if (!anal || anal.total_skills === 0) return 0;
+    const met = anal.skills_above_requirement + anal.skills_at_requirement;
+    return Math.round((met / anal.total_skills) * 100);
+  };
+
   const handlePlanChange = (skillId: number, value: string) => {
     setPlanToClose(prev => ({
+      ...prev,
+      [skillId]: value
+    }));
+  };
+
+  const handleStatusChange = (skillId: number, value: string) => {
+    setLearningStatuses(prev => ({
       ...prev,
       [skillId]: value
     }));
@@ -97,17 +160,19 @@ export const EmployeeDashboard: React.FC = () => {
   const handlePlanBlur = async (skillId: number, employeeSkillId: number) => {
     const plan = planToClose[skillId];
     const targetDate = targetDates[skillId];
-    
+    const status = learningStatuses[skillId];
+
     try {
       const notesData = JSON.stringify({
         plan: plan || '',
         targetDate: targetDate || ''
       });
-      
+
       await userSkillsApi.updateMySkill(employeeSkillId, {
-        notes: notesData
+        notes: notesData,
+        learning_status: status
       });
-      
+
       setEditingSkill(null);
     } catch (err) {
       console.error('Failed to save plan:', err);
@@ -242,7 +307,10 @@ export const EmployeeDashboard: React.FC = () => {
       case 'Completed':
         return 'bg-green-100 text-green-800';
       case 'In Progress':
+      case 'Learning':
         return 'bg-blue-100 text-blue-800';
+      case 'Stuck':
+        return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -252,115 +320,228 @@ export const EmployeeDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F6F2F4]">
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="w-full px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <img src={NxzenLogo} alt="Nxzen" className="h-8 w-8 object-cover rounded" />
-            <span className="text-xl font-semibold text-gray-800">Nxzen</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-sm">
-              <div className="font-medium text-gray-800">
-                {((user as any)?.first_name && (user as any)?.last_name)
-                  ? `${(user as any).first_name} ${(user as any).last_name}`
-                  : (user?.email ? user.email.split('@')[0] : 'User')}
-              </div>
-              <div className="text-xs text-gray-500">{user?.email}</div>
-            </div>
-            <button
-              onClick={() => { authApi.logout(); navigate('/login'); }}
-              className="p-2 rounded-lg hover:bg-gray-100"
-              title="Logout"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-red-600">
-                <path d="M16 13v-2H7V8l-5 4 5 4v-3h9zm3-11H9c-1.1 0-2 .9-2 2v3h2V4h10v16H9v-2H7v3c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </header>
+      <PageHeader title="My Dashboard" subtitle="Track your career progress, skills, and learning" />
 
       <div className="max-w-6xl mx-auto px-4 py-5">
-        {/* Quick Actions / Tabs */}
+        {/* Quick Actions */}
         <div className="mb-6">
-          <h2 className="text-center text-lg font-semibold text-gray-800 mb-3">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <h2 className="text-center text-base font-semibold text-gray-800 mb-4">Quick Actions</h2>
+          <div className="grid grid-cols-3 gap-4 max-w-6xl mx-auto px-4">
+            {/* My Profile Card */}
             <button
               onClick={() => setActiveTab('profile')}
-              className={`flex items-center gap-3 p-3 rounded-lg shadow-sm hover:shadow-md transition-all ${
-                activeTab === 'profile' 
-                  ? 'bg-white ring-1 ring-blue-500' 
-                  : 'bg-white'
-              }`}
+              className={`bg-white px-5 py-4 rounded-lg border-2 transition-all text-left ${activeTab === 'profile'
+                ? 'border-blue-500'
+                : 'border-gray-200 hover:border-gray-300'
+                }`}
             >
-              <div className={`flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center ${
-                activeTab === 'profile' ? 'bg-gray-100' : 'bg-gray-50'
-              }`}>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-gray-700">
-                  <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="text-left">
-                <div className="text-sm font-semibold text-gray-900">My Profile</div>
-                <div className="text-xs text-gray-500">View your details</div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0">
+                  <User className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-900">My Profile</h3>
+                  <p className="text-xs text-gray-500">View your details</p>
+                </div>
               </div>
             </button>
 
+            {/* Career Engagement Card */}
             <button
               onClick={() => setActiveTab('career')}
-              className={`flex items-center gap-3 p-3 rounded-lg shadow-sm hover:shadow-md transition-all ${
-                activeTab === 'career' 
-                  ? 'bg-white ring-1 ring-green-500' 
-                  : 'bg-white'
-              }`}
+              className={`bg-white px-5 py-4 rounded-lg border-2 transition-all text-left ${activeTab === 'career'
+                ? 'border-green-500'
+                : 'border-gray-200 hover:border-gray-300'
+                }`}
             >
-              <div className={`flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center ${
-                activeTab === 'career' ? 'bg-green-50' : 'bg-gray-50'
-              }`}>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-green-700">
-                  <path fillRule="evenodd" d="M2.25 13.5a8.25 8.25 0 018.25-8.25.75.75 0 01.75.75v6.75H18a.75.75 0 01.75.75 8.25 8.25 0 01-16.5 0z" clipRule="evenodd" />
-                  <path fillRule="evenodd" d="M12.75 3a.75.75 0 01.75-.75 8.25 8.25 0 018.25 8.25.75.75 0 01-.75.75h-7.5a.75.75 0 01-.75-.75V3z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="text-left">
-                <div className="text-sm font-semibold text-gray-900">Career Engagement</div>
-                <div className="text-xs text-gray-500">Track your progress</div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                  <Target className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-900">Career Engagement</h3>
+                  <p className="text-xs text-gray-500">Track your progress</p>
+                </div>
               </div>
             </button>
 
+            {/* Mandatory Learning Card */}
             <button
               onClick={() => setActiveTab('learning')}
-              className={`flex items-center gap-3 p-3 rounded-lg shadow-sm hover:shadow-md transition-all relative ${
-                activeTab === 'learning' 
-                  ? 'bg-white ring-1 ring-blue-500' 
-                  : 'bg-white'
-              }`}
+              className={`bg-white px-5 py-4 rounded-lg border-2 transition-all text-left ${activeTab === 'learning'
+                ? 'border-blue-500'
+                : 'border-gray-200 hover:border-gray-300'
+                }`}
             >
-              <div className={`flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center ${
-                activeTab === 'learning' ? 'bg-blue-50' : 'bg-gray-50'
-              }`}>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-blue-700">
-                  <path d="M11.7 2.805a.75.75 0 01.6 0A60.65 60.65 0 0122.83 8.72a.75.75 0 01-.231 1.337 49.949 49.949 0 00-9.902 3.912l-.003.002-.34.18a.75.75 0 01-.707 0A50.009 50.009 0 007.5 12.174v-.224c0-.131.067-.248.172-.311a54.614 54.614 0 014.653-2.52.75.75 0 00-.65-1.352 56.129 56.129 0 00-4.78 2.589 1.858 1.858 0 00-.859 1.228 49.803 49.803 0 00-4.634-1.527.75.75 0 01-.231-1.337A60.653 60.653 0 0111.7 2.805z" />
-                  <path d="M13.06 15.473a48.45 48.45 0 017.666-3.282c.134 1.414.22 2.843.255 4.285a.75.75 0 01-.46.71 47.878 47.878 0 00-8.105 4.342.75.75 0 01-.832 0 47.877 47.877 0 00-8.104-4.342.75.75 0 01-.461-.71c.035-1.442.121-2.87.255-4.286A48.4 48.4 0 016 13.18v1.27a1.5 1.5 0 00-.14 2.508c-.09.38-.222.753-.397 1.11.452.213.901.434 1.346.661a6.729 6.729 0 00.551-1.608 1.5 1.5 0 00.14-2.67v-.645a48.549 48.549 0 013.44 1.668 2.25 2.25 0 002.12 0z" />
-                  <path d="M4.462 19.462c.42-.419.753-.89 1-1.394.453.213.902.434 1.347.661a6.743 6.743 0 01-1.286 1.794.75.75 0 11-1.06-1.06z" />
-                </svg>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+                  <GraduationCap className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-900">Mandatory Learning</h3>
+                  <p className="text-xs text-gray-500">Complete courses</p>
+                </div>
               </div>
-              <div className="text-left">
-                <div className="text-sm font-semibold text-gray-900">Mandatory Learning</div>
-                <div className="text-xs text-gray-500">Complete courses</div>
-              </div>
-              {pendingCourses > 0 && (
-                <span className="absolute top-2 right-2 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                  {pendingCourses}
-                </span>
-              )}
             </button>
           </div>
         </div>
+
+        {/* Career Engagement Tab */}
+        {activeTab === 'career' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-md shadow-sm p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Career Pathway: {analysis?.band || 'Unknown'}</h2>
+                  <p className="text-gray-500">Track your progress to the next level.</p>
+                </div>
+                {analysis && (
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-blue-600">{calculateMatchPercentage(analysis)}%</div>
+                    <div className="text-sm text-gray-500">Match for Current Band</div>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Current Level */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">Current Level ({analysis?.band})</h3>
+                  {analysis && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Total Skills Configured:</span>
+                        <span className="font-medium">{analysis.total_skills}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-green-600">Meeting Requirements:</span>
+                        <span className="font-medium">{analysis.skills_at_requirement + analysis.skills_above_requirement}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-amber-600">Below Requirements:</span>
+                        <span className="font-medium">{analysis.skills_below_requirement}</span>
+                      </div>
+
+                      {/* Gaps List for Current Level */}
+                      {analysis.skills_below_requirement > 0 ? (
+                        <div className="mt-4">
+                          <h4 className="text-xs font-semibold uppercase text-gray-400 mb-2">Gaps to Close</h4>
+                          <div className="space-y-2">
+                            {analysis.skill_gaps.filter(g => g.gap < 0).map(gap => (
+                              <div key={gap.skill_id} className="bg-amber-50 p-2 rounded border border-amber-100 flex justify-between items-center">
+                                <div>
+                                  <div className="text-sm font-medium text-amber-900">{gap.skill_name}</div>
+                                  <div className="text-xs text-amber-700">Current: {gap.current_rating_text || 'None'}</div>
+                                </div>
+                                <div className="text-xs font-bold text-amber-800">
+                                  Target: {gap.required_rating_text}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4 bg-green-50 p-3 rounded text-green-800 text-sm text-center">
+                          You meet all requirements for {analysis.band}!
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Next Level */}
+                <div className="border border-blue-200 rounded-lg p-4 bg-blue-50/30">
+                  <h3 className="text-lg font-semibold mb-4 text-blue-800 border-b border-blue-200 pb-2">
+                    Next Level ({getNextBand(analysis?.band || '') || 'Max Level'})
+                  </h3>
+                  {nextLevelAnalysis ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">Readiness:</span>
+                        <span className="font-bold text-blue-600 text-lg">{calculateMatchPercentage(nextLevelAnalysis)}%</span>
+                      </div>
+
+                      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-600 transition-all duration-1000"
+                          style={{ width: `${calculateMatchPercentage(nextLevelAnalysis)}%` }}
+                        />
+                      </div>
+
+                      {/* Major Gaps for Next Level */}
+                      <div className="mt-4">
+                        <h4 className="text-xs font-semibold uppercase text-gray-400 mb-2">Requirements for {nextLevelAnalysis.band}</h4>
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                          {nextLevelAnalysis.skill_gaps.filter(g => g.gap < 0).map(gap => (
+                            <div key={gap.skill_id} className="bg-white p-2 rounded border border-gray-200 flex justify-between items-center shadow-sm">
+                              <div>
+                                <div className="text-sm font-medium text-gray-800">{gap.skill_name}</div>
+                                <div className="text-xs text-gray-500">Need: {gap.required_rating_text}</div>
+                              </div>
+                              <div className="text-xs px-2 py-1 bg-gray-100 rounded text-gray-600">
+                                {gap.current_rating_text || 'No Rating'}
+                              </div>
+                            </div>
+                          ))}
+                          {nextLevelAnalysis.skill_gaps.filter(g => g.gap < 0).length === 0 && (
+                            <div className="text-sm text-gray-500 text-center py-2">
+                              No gaps! You are ready for {nextLevelAnalysis.band}.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      {getNextBand(analysis?.band || '') ? 'Loading next level data...' : 'You are at the highest defined level!'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Profile Tab */}
         {activeTab === 'profile' && (
           <div className="space-y-6">
+            {/* Pending Template Assignments */}
+            {templateAssignments.filter(a => a.status === 'Pending').length > 0 && (
+              <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-500 rounded-lg shadow-sm p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0">
+                    <svg className="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-purple-900 mb-1">
+                      You have {templateAssignments.filter(a => a.status === 'Pending').length} pending template assignment(s)
+                    </h3>
+                    <p className="text-sm text-purple-700 mb-3">
+                      Your manager has assigned skill templates for you to fill out.
+                    </p>
+                    <div className="space-y-2">
+                      {templateAssignments.filter(a => a.status === 'Pending').map((assignment: any) => (
+                        <div key={assignment.id} className="bg-white rounded-md p-3 flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">{assignment.template_name}</p>
+                            <p className="text-xs text-gray-500">Assigned: {new Date(assignment.assigned_at).toLocaleDateString()}</p>
+                          </div>
+                          <button
+                            onClick={() => navigate(`/assignments/${assignment.id}/fill`)}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm font-medium"
+                          >
+                            Fill Template
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Profile Card */}
             <div className="bg-white rounded-md shadow-sm p-4">
               <div className="flex items-center gap-3 mb-4">
@@ -375,7 +556,7 @@ export const EmployeeDashboard: React.FC = () => {
                     : analysis?.employee_name || 'Employee'}
                 </h2>
               </div>
-              
+
               {/* Profile Details Table */}
               <div className="border border-gray-200 rounded-md overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
@@ -397,14 +578,14 @@ export const EmployeeDashboard: React.FC = () => {
                       <td className="px-4 py-2 text-sm text-gray-900">India</td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Band</td>
-                      <td className="px-4 py-2 text-sm text-gray-900">{employee?.band || analysis?.band || 'L1'}</td>
-                    </tr>
-                    <tr>
                       <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Role Title</td>
                       <td className="px-4 py-2 text-sm text-gray-900">
-                        {employee?.role || 'Consultant'}
+                        {employee?.role || '-'}
                       </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Band</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">{employee?.band || analysis?.band || '-'}</td>
                     </tr>
                     <tr>
                       <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Current Project / Investment Bank</td>
@@ -437,15 +618,15 @@ export const EmployeeDashboard: React.FC = () => {
                           const below = analysis.skills_below_requirement;
                           const total = above + at + below;
                           if (total === 0) return <circle cx="18" cy="18" r="15.9" fill="transparent" stroke="#E5E7EB" strokeWidth="3" />;
-                          
+
                           const abovePct = (above / total) * 100;
                           const atPct = (at / total) * 100;
                           const belowPct = (below / total) * 100;
-                          
+
                           // Calculate stroke-dasharray for each segment (circumference = 100)
                           const segments = [];
                           let offset = 25; // Start at top (25 = 90 degrees offset for top start)
-                          
+
                           if (above > 0) {
                             segments.push(
                               <circle key="above" cx="18" cy="18" r="15.9" fill="transparent"
@@ -541,6 +722,32 @@ export const EmployeeDashboard: React.FC = () => {
               </div>
             </div>
 
+            {/* Assigned Templates Section */}
+            <div className="bg-white rounded-md shadow-sm p-4 mb-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-gray-900">Assigned Templates</h3>
+                <span className="text-sm text-gray-500">
+                  {assignedTemplates.filter(a => a.status !== 'Completed').length} pending
+                </span>
+              </div>
+
+              {loading ? (
+                <div className="text-center py-8 text-gray-500">Loading templates...</div>
+              ) : assignedTemplates.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">No templates assigned yet</div>
+              ) : (
+                <div className="space-y-3">
+                  {assignedTemplates.map(assignment => (
+                    <AssignedTemplateCard
+                      key={assignment.id}
+                      assignment={assignment}
+                      onFill={() => setFillingTemplateId(assignment.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Skills & Proficiency Section */}
             <div className="bg-white rounded-md shadow-sm p-4">
               <div className="flex items-center justify-between mb-4">
@@ -555,7 +762,7 @@ export const EmployeeDashboard: React.FC = () => {
                   Edit Skills
                 </button>
               </div>
-              
+
               {loading ? (
                 <div className="text-center py-8 text-gray-500">Loading skills...</div>
               ) : skills.filter(s => !s.is_interested && !s.is_custom).length === 0 ? (
@@ -612,7 +819,7 @@ export const EmployeeDashboard: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                
+
                 {customSkillsExpanded && (
                   <div className="px-4 pb-4">
                     {skills.filter(s => !s.is_interested && s.is_custom).length === 0 ? (
@@ -672,7 +879,7 @@ export const EmployeeDashboard: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                
+
                 {interestedSkillsExpanded && (
                   <div className="px-4 pb-4">
                     {skills.filter(s => s.is_interested).length === 0 ? (
@@ -839,19 +1046,20 @@ export const EmployeeDashboard: React.FC = () => {
         {activeTab === 'career' && (
           <div className="space-y-6">
             {/* Summary Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <div className="bg-white rounded-md shadow-sm p-3">
-                <div className="text-xs text-gray-500 uppercase mb-1">Band</div>
-                <div className="text-xl font-bold text-blue-600">{analysis?.band || 'L1'}</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+              <div className="bg-white rounded-md shadow-sm p-4">
+                <div className="text-xs text-gray-500 uppercase mb-2">Band</div>
+                <div className="text-2xl font-bold text-blue-600">{analysis?.band || 'L1'}</div>
               </div>
-              
-              <div className="bg-white rounded-md shadow-sm p-3">
-                <div className="text-xs text-gray-500 uppercase mb-1">Total Skills</div>
-                <div className="text-xl font-bold text-gray-900">{analysis?.total_skills || 0}</div>
+
+              <div className="bg-white rounded-md shadow-sm p-4">
+                <div className="text-xs text-gray-500 uppercase mb-2">Total Skills</div>
+                <div className="text-2xl font-bold text-gray-900">{analysis?.total_skills || 0}</div>
               </div>
-              <div className="bg-white rounded-md shadow-sm p-3">
-                <div className="text-xs text-gray-500 uppercase mb-1">Skills Below Requirement </div>
-                <div className="text-xl font-bold text-yellow-600">{analysis?.skills_below_requirement || 0}</div>
+
+              <div className="bg-white rounded-md shadow-sm p-4">
+                <div className="text-xs text-gray-500 uppercase mb-2">Skills Below Requirement</div>
+                <div className="text-2xl font-bold text-yellow-600">{analysis?.skills_below_requirement || 0}</div>
               </div>
             </div>
 
@@ -874,33 +1082,29 @@ export const EmployeeDashboard: React.FC = () => {
               <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex gap-2">
                 <button
                   onClick={() => setFilter('all')}
-                  className={`px-3 py-1.5 rounded-md font-medium text-sm ${
-                    filter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
-                  }`}
+                  className={`px-3 py-1.5 rounded-md font-medium text-sm ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
+                    }`}
                 >
                   All ({analysis?.skill_gaps.length || 0})
                 </button>
                 <button
                   onClick={() => setFilter('below')}
-                  className={`px-3 py-1.5 rounded-md font-medium text-sm ${
-                    filter === 'below' ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
-                  }`}
+                  className={`px-3 py-1.5 rounded-md font-medium text-sm ${filter === 'below' ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
+                    }`}
                 >
                   Below Requirement ({analysis?.skills_below_requirement || 0})
                 </button>
                 <button
                   onClick={() => setFilter('at')}
-                  className={`px-3 py-1.5 rounded-md font-medium text-sm ${
-                    filter === 'at' ? 'bg-gray-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
-                  }`}
+                  className={`px-3 py-1.5 rounded-md font-medium text-sm ${filter === 'at' ? 'bg-gray-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
+                    }`}
                 >
                   At Requirement ({analysis?.skills_at_requirement || 0})
                 </button>
                 <button
                   onClick={() => setFilter('above')}
-                  className={`px-3 py-1.5 rounded-md font-medium text-sm ${
-                    filter === 'above' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
-                  }`}
+                  className={`px-3 py-1.5 rounded-md font-medium text-sm ${filter === 'above' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
+                    }`}
                 >
                   Above Requirement ({analysis?.skills_above_requirement || 0})
                 </button>
@@ -925,7 +1129,7 @@ export const EmployeeDashboard: React.FC = () => {
                   Showing {((currentPage - 1) * rowsPerPage) + 1} to {Math.min(currentPage * rowsPerPage, filteredGaps.length)} of {filteredGaps.length} skills
                 </span>
               </div>
-              
+
               {loading ? (
                 <div className="text-center py-12 text-gray-500">Loading analysis...</div>
               ) : !analysis || analysis.skill_gaps.length === 0 ? (
@@ -938,9 +1142,10 @@ export const EmployeeDashboard: React.FC = () => {
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">Skill</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase">Current Rating</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase">Current Level</th>
-                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase">Required Rating<br/>({analysis.band})</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase">Required Level</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase">Gap</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase">Status</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-600 uppercase">Recommended Learning</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase min-w-[220px]">Plan to Close</th>
                       </tr>
                     </thead>
@@ -969,18 +1174,77 @@ export const EmployeeDashboard: React.FC = () => {
                             <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getSkillLevelColor(gap.required_rating_text)}`}>
                               {gap.required_rating_text}
                             </span>
+                            {gap.requirement_source && (
+                              <div className="text-[10px] text-gray-400 mt-1 uppercase tracking-wide">
+                                {gap.requirement_source}
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-3 text-center text-sm font-medium text-gray-900">
                             {gap.required_rating_number}
                           </td>
                           <td className="px-3 py-3 text-center">
-                            <span className={`inline-flex items-center justify-center w-12 h-6 rounded-md text-xs font-bold ${
-                              gap.gap > 0 ? 'bg-green-100 text-green-800' : 
-                              gap.gap === 0 ? 'bg-gray-100 text-gray-800' : 
-                              'bg-yellow-100 text-yellow-800'
-                            }`}>
+                            <span className={`inline-flex items-center justify-center w-12 h-6 rounded-md text-xs font-bold ${gap.gap > 0 ? 'bg-green-100 text-green-800' :
+                              gap.gap === 0 ? 'bg-gray-100 text-gray-800' :
+                                'bg-yellow-100 text-yellow-800'
+                              }`}>
                               {gap.gap > 0 ? `+${gap.gap}` : gap.gap}
                             </span>
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            {editingSkill === gap.skill_id ? (
+                              <select
+                                value={learningStatuses[gap.skill_id] || 'Not Started'}
+                                onChange={(e) => handleStatusChange(gap.skill_id, e.target.value)}
+                                className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                              >
+                                <option value="Not Started">Not Started</option>
+                                <option value="Learning">Learning</option>
+                                <option value="Stuck">Stuck</option>
+                                <option value="Completed">Completed</option>
+                              </select>
+                            ) : (
+                              <div className="flex flex-col items-center">
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(gap.learning_status || 'Not Started')}`}>
+                                  {gap.learning_status || 'Not Started'}
+                                </span>
+                                {(learningStatuses[gap.skill_id] === 'Learning' || learningStatuses[gap.skill_id] === 'Stuck') && gap.pending_days !== undefined && gap.pending_days > 0 && (
+                                  <span className="text-[10px] text-gray-500 mt-1">
+                                    {gap.pending_days} day{gap.pending_days !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-sm">
+                            {gap.suggested_courses && gap.suggested_courses.length > 0 ? (
+                              <div className="space-y-2">
+                                {gap.suggested_courses.map(course => (
+                                  <div key={course.id} className="flex items-center justify-between bg-blue-50 p-2 rounded border border-blue-100">
+                                    <div className="flex-1 mr-2">
+                                      <div className="text-xs font-semibold text-blue-900">{course.title}</div>
+                                      {course.is_mandatory && <span className="text-[10px] text-red-600 font-bold uppercase">Mandatory</span>}
+                                    </div>
+                                    {course.external_url ? (
+                                      <a
+                                        href={course.external_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-2 py-1 bg-white text-blue-600 text-xs rounded border border-blue-200 hover:bg-blue-50 whitespace-nowrap"
+                                      >
+                                        Start
+                                      </a>
+                                    ) : (
+                                      <button className="px-2 py-1 bg-white text-blue-600 text-xs rounded border border-blue-200 hover:bg-blue-50 whitespace-nowrap">
+                                        Enroll
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-xs italic">No courses available</span>
+                            )}
                           </td>
                           <td className="px-3 py-3">
                             {gap.gap < 0 ? (
@@ -1063,22 +1327,20 @@ export const EmployeeDashboard: React.FC = () => {
                     <button
                       onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
-                      className={`px-3 py-1.5 rounded-md text-sm ${
-                        currentPage === 1
-                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
-                      }`}
+                      className={`px-3 py-1.5 rounded-md text-sm ${currentPage === 1
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                        }`}
                     >
                       Previous
                     </button>
                     <button
                       onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
-                      className={`px-3 py-1.5 rounded-md text-sm ${
-                        currentPage === totalPages
-                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
-                      }`}
+                      className={`px-3 py-1.5 rounded-md text-sm ${currentPage === totalPages
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                        }`}
                     >
                       Next
                     </button>
@@ -1172,6 +1434,18 @@ export const EmployeeDashboard: React.FC = () => {
         )}
       </div>
 
+      {/* Template Fill Modal */}
+      {fillingTemplateId && (
+        <TemplateFillModal
+          assignmentId={fillingTemplateId}
+          onClose={() => setFillingTemplateId(null)}
+          onSuccess={async () => {
+            // Reload data after successful submission
+            await loadData();
+            alert('Template submitted successfully! Your skills have been updated.');
+          }}
+        />
+      )}
 
     </div>
   );

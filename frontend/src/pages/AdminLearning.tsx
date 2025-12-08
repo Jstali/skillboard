@@ -2,7 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, learningApi, adminDashboardApi, skillsApi, Course, CourseAssignment, Employee, Skill } from '../services/api';
-import NxzenLogo from '../images/Nxzen.jpg';
+import { Button } from '../components/Button';
+import { PageHeader } from '../components/PageHeader';
+import { Plus, Trash2, ArrowRight, BookOpen, Layers, Users, BarChart } from 'lucide-react';
 
 export const AdminLearning: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'courses' | 'assignments' | 'auto-assign'>('courses');
@@ -17,7 +19,7 @@ export const AdminLearning: React.FC = () => {
   const [skillGapReport, setSkillGapReport] = useState<any[]>([]);
   const [autoAssigning, setAutoAssigning] = useState(false);
   const [autoAssignResult, setAutoAssignResult] = useState<any>(null);
-  
+
   // Form states
   const [courseTitle, setCourseTitle] = useState('');
   const [courseDescription, setCourseDescription] = useState('');
@@ -26,7 +28,7 @@ export const AdminLearning: React.FC = () => {
   const [isMandatory, setIsMandatory] = useState(false);
   const [dueDate, setDueDate] = useState('');
   const [skills, setSkills] = useState<any[]>([]);
-  
+
   const navigate = useNavigate();
   const user = authApi.getUser();
 
@@ -52,7 +54,7 @@ export const AdminLearning: React.FC = () => {
         const reportData = await learningApi.getSkillGapReport();
         setSkillGapReport(reportData);
       }
-      
+
       // Load employees for assignment
       const employeesData = await adminDashboardApi.getEmployees(0, 1000);
       setEmployees(employeesData);
@@ -92,7 +94,7 @@ export const AdminLearning: React.FC = () => {
         external_url: courseUrl || undefined,
         is_mandatory: isMandatory,
       });
-      
+
       setShowCreateCourse(false);
       setCourseTitle('');
       setCourseDescription('');
@@ -141,7 +143,7 @@ export const AdminLearning: React.FC = () => {
         employee_ids: selectedEmployees,
         due_date: dueDate || undefined,
       });
-      
+
       setShowAssignCourse(false);
       setSelectedCourse(null);
       setSelectedEmployees([]);
@@ -184,39 +186,7 @@ export const AdminLearning: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F6F2F4]">
-      <header className="bg-[#F6F2F4] shadow-sm border-b border-gray-200 -mx-4">
-        <div className="w-full px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <img src={NxzenLogo} alt="Nxzen" className="h-8 w-8 object-cover" />
-            <span className="text-xl font-semibold text-gray-800">nxzen</span>
-            <span aria-hidden className="h-6 w-px bg-gray-300" />
-            <h1 className="text-2xl font-bold text-gray-800 italic" style={{ fontFamily: '"Times New Roman", Times, serif', fontStyle: 'italic' }}>Learning Management</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-200">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-gray-700">
-                <path fillRule="evenodd" d="M12 2a5 5 0 100 10 5 5 0 000-10zm-7 18a7 7 0 1114 0H5z" clipRule="evenodd" />
-              </svg>
-              <div className="text-sm font-medium text-gray-800">
-                {((user as any)?.first_name && (user as any)?.last_name)
-                  ? `${(user as any).first_name} ${(user as any).last_name}`
-                  : (user?.employee_id || (user?.email ? user.email.split('@')[0] : 'User'))}
-                <br />
-                <span className="text-xs text-gray-500">{user?.email}</span>
-              </div>
-            </div>
-            <button
-              onClick={() => { authApi.logout(); navigate('/login'); }}
-              title="Logout"
-              className="p-2 rounded-lg hover:bg-gray-200"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-red-600 transform rotate-180">
-                <path d="M16 13v-2H7V8l-5 4 5 4v-3h9zm3-11H9c-1.1 0-2 .9-2 2v3h2V4h10v16H9v-2H7v3c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </header>
+      <PageHeader title="Learning Management" />
 
       {/* Quick Actions */}
       <div className="max-w-7xl mx-auto px-6 mt-4">
@@ -277,17 +247,17 @@ export const AdminLearning: React.FC = () => {
           >
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-purple-100">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-8 h-8 text-purple-700">
-                <path fill="currentColor" d="M12 2c4.97 0 9 3.58 9 8.3 0 3.73-2.65 6.93-6.25 7.67V21H9.5v-2.06C6.07 18.4 3 15.15 3 10.96 3 5.66 7.03 2 12 2z"/>
+                <path fill="currentColor" d="M12 2c4.97 0 9 3.58 9 8.3 0 3.73-2.65 6.93-6.25 7.67V21H9.5v-2.06C6.07 18.4 3 15.15 3 10.96 3 5.66 7.03 2 12 2z" />
                 <g fill="#ffffff">
-                  <circle cx="12" cy="11" r="2"/>
-                  <rect x="11.3" y="6.5" width="1.4" height="2.2" rx="0.3"/>
-                  <rect x="15.8" y="10.3" width="2.2" height="1.4" rx="0.3"/>
-                  <rect x="11.3" y="13.3" width="1.4" height="2.2" rx="0.3"/>
-                  <rect x="6" y="10.3" width="2.2" height="1.4" rx="0.3"/>
-                  <rect x="14.7" y="8" width="1.6" height="1.6" rx="0.3"/>
-                  <rect x="8.7" y="8" width="1.6" height="1.6" rx="0.3"/>
-                  <rect x="14.7" y="12.9" width="1.6" height="1.6" rx="0.3"/>
-                  <rect x="8.7" y="12.9" width="1.6" height="1.6" rx="0.3"/>
+                  <circle cx="12" cy="11" r="2" />
+                  <rect x="11.3" y="6.5" width="1.4" height="2.2" rx="0.3" />
+                  <rect x="15.8" y="10.3" width="2.2" height="1.4" rx="0.3" />
+                  <rect x="11.3" y="13.3" width="1.4" height="2.2" rx="0.3" />
+                  <rect x="6" y="10.3" width="2.2" height="1.4" rx="0.3" />
+                  <rect x="14.7" y="8" width="1.6" height="1.6" rx="0.3" />
+                  <rect x="8.7" y="8" width="1.6" height="1.6" rx="0.3" />
+                  <rect x="14.7" y="12.9" width="1.6" height="1.6" rx="0.3" />
+                  <rect x="8.7" y="12.9" width="1.6" height="1.6" rx="0.3" />
                 </g>
               </svg>
             </span>
@@ -348,43 +318,38 @@ export const AdminLearning: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-6 py-6">
         {/* Tabs */}
-        <div className="mb-6 flex gap-3">
-          <button
+        <div className="mb-6 flex flex-wrap gap-3">
+          <Button
+            variant={activeTab === 'courses' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('courses')}
-            className={`px-6 py-3 rounded-lg font-semibold ${
-              activeTab === 'courses' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
-            }`}
           >
             Courses ({courses.length})
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={activeTab === 'assignments' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('assignments')}
-            className={`px-6 py-3 rounded-lg font-semibold ${
-              activeTab === 'assignments' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
-            }`}
           >
             Assignments ({assignments.length})
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={activeTab === 'auto-assign' ? 'primary' : 'secondary'}
             onClick={() => setActiveTab('auto-assign')}
-            className={`px-6 py-3 rounded-lg font-semibold ${
-              activeTab === 'auto-assign' ? 'bg-purple-600 text-white' : 'bg-white text-gray-700 border border-gray-300'
-            }`}
           >
             Auto-Assign by Skill Gap
-          </button>
+          </Button>
         </div>
 
         {/* Courses Tab */}
         {activeTab === 'courses' && (
           <div>
             <div className="mb-6 flex justify-end">
-              <button
+              <Button
+                variant="success"
+                icon={<Plus className="w-4 h-4" />}
                 onClick={() => setShowCreateCourse(true)}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
               >
-                + Create Course
-              </button>
+                Create Course
+              </Button>
             </div>
 
             {loading ? (
@@ -442,21 +407,23 @@ export const AdminLearning: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <button
+                            <Button
+                              size="sm"
+                              variant="secondary"
                               onClick={() => {
                                 setSelectedCourse(course);
                                 setShowAssignCourse(true);
                               }}
-                              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
                             >
                               Assign
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="danger"
                               onClick={() => handleDeleteCourse(course.id)}
-                              className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
                             >
                               Delete
-                            </button>
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -526,7 +493,7 @@ export const AdminLearning: React.FC = () => {
                 </div>
                 <div className="ml-3">
                   <p className="text-sm text-blue-700">
-                    This feature automatically assigns courses to employees based on their skill gaps. 
+                    This feature automatically assigns courses to employees based on their skill gaps.
                     Courses mapped to skills will be assigned to employees whose current skill level is below their band's required level.
                   </p>
                 </div>
@@ -534,13 +501,14 @@ export const AdminLearning: React.FC = () => {
             </div>
 
             <div className="mb-6 flex justify-end">
-              <button
+              <Button
+                variant="primary"
                 onClick={handleAutoAssignAll}
                 disabled={autoAssigning}
-                className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold disabled:opacity-50"
+                loading={autoAssigning}
               >
                 {autoAssigning ? 'Processing...' : '🚀 Auto-Assign All Employees'}
-              </button>
+              </Button>
             </div>
 
             {autoAssignResult && (
@@ -578,12 +546,13 @@ export const AdminLearning: React.FC = () => {
                         <h3 className="text-lg font-bold text-gray-900">{employee.employee_name}</h3>
                         <p className="text-sm text-gray-500">Band: {employee.band}</p>
                       </div>
-                      <button
+                      <Button
+                        size="sm"
+                        variant="secondary"
                         onClick={() => handleAutoAssignEmployee(employee.employee_id)}
-                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium"
                       >
                         Auto-Assign
-                      </button>
+                      </Button>
                     </div>
 
                     {/* Skill Gaps Section */}
@@ -703,7 +672,7 @@ export const AdminLearning: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h2 className="text-xl font-bold mb-4">Create New Course</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Course Title *</label>
@@ -770,15 +739,18 @@ export const AdminLearning: React.FC = () => {
                 </label>
               </div>
 
-              <div className="flex gap-3">
-                <button
+              <div className="flex gap-3 pt-2">
+                <Button
+                  className="flex-1"
+                  variant="success"
                   onClick={handleCreateCourse}
                   disabled={!courseTitle.trim()}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
                 >
                   Create
-                </button>
-                <button
+                </Button>
+                <Button
+                  className="flex-1"
+                  variant="secondary"
                   onClick={() => {
                     setShowCreateCourse(false);
                     setCourseTitle('');
@@ -787,10 +759,9 @@ export const AdminLearning: React.FC = () => {
                     setCourseSkillId(undefined);
                     setIsMandatory(false);
                   }}
-                  className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -802,7 +773,7 @@ export const AdminLearning: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
             <h2 className="text-xl font-bold mb-4">Assign Course: {selectedCourse.title}</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Due Date (Optional)</label>

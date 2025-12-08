@@ -31,26 +31,26 @@ export const OnboardingMapSkills: React.FC = () => {
     try {
       setLoading(true);
       const employeeSkills = await userSkillsApi.getMySkills();
-      
+
       const skills: SkillCardData[] = [];
-      
+
       employeeSkills.forEach((empSkill) => {
         const skillData: SkillCardData = {
           id: empSkill.skill_id,
           name: empSkill.skill?.name || 'Unknown',
           description: empSkill.skill?.description,
-          rating: empSkill.rating || undefined,
+          rating: (empSkill.rating as any) || undefined,
           years_experience: empSkill.years_experience || undefined,
           employee_skill_id: empSkill.id,
           is_custom: empSkill.is_custom || false,
         };
-        
+
         // Only include non-interested skills
         if (!empSkill.is_interested) {
           skills.push(skillData);
         }
       });
-      
+
       setMySkills(skills);
     } catch (error) {
       console.error('Failed to load skills:', error);
@@ -134,7 +134,7 @@ export const OnboardingMapSkills: React.FC = () => {
       setMySkills([...mySkills, newSkillData]);
       setCustomSkillName('');
       setShowCustomSkillInput(false);
-      
+
       // Reload all skills to include the new custom skill
       await loadAllSkills();
     } catch (error) {
@@ -159,7 +159,7 @@ export const OnboardingMapSkills: React.FC = () => {
 
   const handleSkillRemove = async (skillId: number) => {
     const skill = mySkills.find(s => s.id === skillId);
-    
+
     if (!skill || !skill.employee_skill_id) return;
 
     try {
@@ -250,7 +250,7 @@ export const OnboardingMapSkills: React.FC = () => {
                     />
                   </div>
                 </div>
-                
+
                 <SkillBrowser
                   searchQuery={searchQuery}
                   excludeSkillIds={excludeSkillIds}
@@ -303,9 +303,8 @@ const MySkillsDropZone: React.FC<{
   return (
     <div
       ref={setNodeRef}
-      className={`bg-white rounded-md shadow-sm border border-gray-200 p-3 min-h-[500px] transition-all ${
-        isOver ? 'ring-2 ring-blue-400 border-blue-400' : ''
-      }`}
+      className={`bg-white rounded-md shadow-sm border border-gray-200 p-3 min-h-[500px] transition-all ${isOver ? 'ring-2 ring-blue-400 border-blue-400' : ''
+        }`}
     >
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-800">My Skills ({mySkills.length})</h2>
@@ -320,12 +319,11 @@ const MySkillsDropZone: React.FC<{
           </div>
         </div>
       </div>
-      
+
       <div className="space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto pr-1">
         {mySkills.length === 0 ? (
-          <div className={`text-center py-12 rounded-md border-2 border-dashed transition-all ${
-            isOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 bg-gray-50'
-          }`}>
+          <div className={`text-center py-12 rounded-md border-2 border-dashed transition-all ${isOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 bg-gray-50'
+            }`}>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 mx-auto mb-2 text-gray-400">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
@@ -386,9 +384,8 @@ const SkillRow: React.FC<{
   isCustom?: boolean;
 }> = ({ skill, onRatingChange, onSkillRemove, isCustom }) => {
   return (
-    <div className={`bg-white rounded-md p-2 border hover:border-blue-300 hover:shadow-sm transition-all group ${
-      isCustom ? 'border-green-200 bg-green-50/30' : 'border-gray-200'
-    }`}>
+    <div className={`bg-white rounded-md p-2 border hover:border-blue-300 hover:shadow-sm transition-all group ${isCustom ? 'border-green-200 bg-green-50/30' : 'border-gray-200'
+      }`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -407,15 +404,14 @@ const SkillRow: React.FC<{
               <button
                 key={rating}
                 onClick={() => onRatingChange(skill.id, rating)}
-                className={`w-6 h-6 rounded-full font-semibold text-xs transition-all ${
-                  skill.rating === rating
+                className={`w-6 h-6 rounded-full font-semibold text-xs transition-all ${skill.rating === rating
                     ? rating === 'Beginner' ? 'bg-green-500 text-white shadow-sm'
-                    : rating === 'Developing' ? 'bg-blue-500 text-white shadow-sm'
-                    : rating === 'Intermediate' ? 'bg-yellow-500 text-white shadow-sm'
-                    : rating === 'Advanced' ? 'bg-orange-500 text-white shadow-sm'
-                    : 'bg-purple-500 text-white shadow-sm'
+                      : rating === 'Developing' ? 'bg-blue-500 text-white shadow-sm'
+                        : rating === 'Intermediate' ? 'bg-yellow-500 text-white shadow-sm'
+                          : rating === 'Advanced' ? 'bg-orange-500 text-white shadow-sm'
+                            : 'bg-purple-500 text-white shadow-sm'
                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}
+                  }`}
                 title={rating}
               >
                 {rating.charAt(0)}

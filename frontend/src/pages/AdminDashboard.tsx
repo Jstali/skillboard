@@ -2,13 +2,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import { authApi, adminDashboardApi, adminApi, categoriesApi, bandsApi, skillsApi, Employee, EmployeeSkill, SkillOverview, SkillImprovement, DashboardStats, UploadResponse, BandAnalysis } from '../services/api';
-import NxzenLogo from '../images/Nxzen.jpg';
+import { authApi, adminDashboardApi, adminApi, categoriesApi, bandsApi, skillsApi, templatesApi, learningApi, Employee, EmployeeSkill, SkillOverview, SkillImprovement, DashboardStats, UploadResponse, BandAnalysis, Course } from '../services/api';
+import { Button } from '../components/Button';
+import { PageHeader } from '../components/PageHeader';
+import { Activity, Users, BookOpen, TrendingUp, BarChart2, Briefcase, ChevronDown, ChevronRight, Plus, Upload, Trash2, Edit2, Play, Search, Target, Award, Download, LayoutGrid, Layers } from 'lucide-react';
+import { SearchableSelect } from '../components/SearchableSelect';
+import { TemplateManagement } from '../components/TemplateManagement';
+import { CareerPathways } from './CareerPathways';
 
 export const AdminDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const initialTab = (searchParams.get('tab') as 'overview' | 'employees' | 'skills' | 'improvements' | 'skill-gap') || 'overview';
-  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'skills' | 'improvements' | 'skill-gap'>(initialTab);
+  const initialTab = (searchParams.get('tab') as 'overview' | 'employees' | 'skills' | 'improvements' | 'skill-gap' | 'courses' | 'career-pathways') || 'overview';
+  const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'skills' | 'improvements' | 'skill-gap' | 'courses' | 'career-pathways'>(initialTab);
   const [allEmployeesAnalysis, setAllEmployeesAnalysis] = useState<BandAnalysis[]>([]);
   const [loadingSkillGap, setLoadingSkillGap] = useState(false);
   const [skillGapSearchQuery, setSkillGapSearchQuery] = useState<string>('');
@@ -33,7 +38,7 @@ export const AdminDashboard: React.FC = () => {
   const [uploadingSkills, setUploadingSkills] = useState(false);
   const [skillsUploadResult, setSkillsUploadResult] = useState<UploadResponse | null>(null);
   const [uploadError, setUploadError] = useState<string>('');
-  const [searchCriteria, setSearchCriteria] = useState<Array<{skill_name: string, rating: string}>>([
+  const [searchCriteria, setSearchCriteria] = useState<Array<{ skill_name: string, rating: string }>>([
     { skill_name: '', rating: '' }
   ]);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -57,10 +62,18 @@ export const AdminDashboard: React.FC = () => {
   const [addSkillForCategory, setAddSkillForCategory] = useState('');
   const [addSkillForPathway, setAddSkillForPathway] = useState('');
   const [savingSkill, setSavingSkill] = useState(false);
+  // Template management states
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [uploadingTemplate, setUploadingTemplate] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateToDelete, setTemplateToDelete] = useState<number | null>(null);
+  const templateFileInputRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
 
   const user = authApi.getUser();
-  
+
   const [employeesPage, setEmployeesPage] = useState<number>(1);
   const [employeesPerPage, setEmployeesPerPage] = useState<number>(10);
   const [skillsPage, setSkillsPage] = useState<number>(1);
@@ -68,6 +81,22 @@ export const AdminDashboard: React.FC = () => {
   const [imprPage, setImprPage] = useState<number>(1);
   const [imprPerPage, setImprPerPage] = useState<number>(10);
   const [expandedImprovementEmployees, setExpandedImprovementEmployees] = useState<string[]>([]);
+
+  // Course Management States
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(false);
+  const [showCourseModal, setShowCourseModal] = useState(false);
+  const [savingCourse, setSavingCourse] = useState(false);
+  const [currentCourse, setCurrentCourse] = useState<Partial<Course>>({});
+  const [courseToDelete, setCourseToDelete] = useState<number | null>(null);
+  const [allSimpleSkills, setAllSimpleSkills] = useState<any[]>([]); // For skill selection dropdown in course modal
+
+  // Bulk Assignment States
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignCourse, setAssignCourse] = useState<Course | null>(null);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([]);
+  const [assigning, setAssigning] = useState(false);
+  const [assignmentSearchQuery, setAssignmentSearchQuery] = useState('');
 
   useEffect(() => {
     if (!user) {
@@ -103,6 +132,127 @@ export const AdminDashboard: React.FC = () => {
     setSkillGapPage(1);
   }, [skillGapSearchQuery]);
 
+  const loadCourses = async () => {
+    setLoadingCourses(true);
+    try {
+      const [coursesData, skillsData] = await Promise.all([
+        learningApi.getAllCourses(),
+        skillsApi.getAllSimple()
+      ]);
+      setCourses(coursesData);
+      setAllSimpleSkills(skillsData);
+    } catch (error) {
+      console.error('Failed to load courses:', error);
+    } finally {
+      setLoadingCourses(false);
+    }
+  };
+
+  const handleCreateCourse = () => {
+    setCurrentCourse({ is_mandatory: false });
+    setShowCourseModal(true);
+  };
+
+  const handleEditCourse = (course: Course) => {
+    setCurrentCourse({ ...course });
+    setShowCourseModal(true);
+  };
+
+  const handleSaveCourse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentCourse.title) return;
+
+    setSavingCourse(true);
+    try {
+      await learningApi.createCourse({
+        title: currentCourse.title,
+        description: currentCourse.description,
+        skill_id: currentCourse.skill_id,
+        external_url: currentCourse.external_url,
+        is_mandatory: currentCourse.is_mandatory || false
+      });
+      await loadCourses();
+      setShowCourseModal(false);
+    } catch (error) {
+      console.error('Failed to save course:', error);
+      alert('Failed to save course');
+    } finally {
+      setSavingCourse(false);
+    }
+  };
+
+  const handleDeleteCourse = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this course?')) return;
+    try {
+      await learningApi.deleteCourse(id);
+      await loadCourses();
+    } catch (error) {
+      console.error('Failed to delete course:', error);
+      alert('Failed to delete course');
+    }
+  };
+
+  const handleOpenAssignModal = (course: Course) => {
+    setAssignCourse(course);
+    setSelectedEmployeeIds([]);
+    setAssignmentSearchQuery('');
+    setAssigning(false);
+    setShowAssignModal(true);
+    // Ensure employees are loaded
+    if (employees.length === 0) {
+      adminDashboardApi.getEmployees(0, 1000).then(setEmployees);
+    }
+  };
+
+  const handleAssignCourse = async () => {
+    if (!assignCourse || selectedEmployeeIds.length === 0) return;
+
+    setAssigning(true);
+    try {
+      await learningApi.assignCourse({
+        course_id: assignCourse.id,
+        employee_ids: selectedEmployeeIds
+      });
+      alert(`Successfully assigned "${assignCourse.title}" to ${selectedEmployeeIds.length} employees.`);
+      setShowAssignModal(false);
+    } catch (error) {
+      console.error("Failed to assign course:", error);
+      alert("Failed to assign course. Please try again.");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const toggleEmployeeSelection = (employeeId: number) => {
+    setSelectedEmployeeIds(prev =>
+      prev.includes(employeeId)
+        ? prev.filter(id => id !== employeeId)
+        : [...prev, employeeId]
+    );
+  };
+
+  const handleSelectAllFilteredEmployees = () => {
+    const filtered = employees.filter(e =>
+      e.name.toLowerCase().includes(assignmentSearchQuery.toLowerCase()) ||
+      e.employee_id.toLowerCase().includes(assignmentSearchQuery.toLowerCase())
+    );
+    const allIds = filtered.map(e => e.id);
+
+    // If all filtered are already selected, deselect them
+    const allSelected = allIds.every(id => selectedEmployeeIds.includes(id));
+
+    if (allSelected) {
+      setSelectedEmployeeIds(prev => prev.filter(id => !allIds.includes(id)));
+    } else {
+      // Add missing ones
+      const newIds = [...selectedEmployeeIds];
+      allIds.forEach(id => {
+        if (!newIds.includes(id)) newIds.push(id);
+      });
+      setSelectedEmployeeIds(newIds);
+    }
+  };
+
   const loadAllEmployeesAnalysis = async () => {
     setLoadingSkillGap(true);
     try {
@@ -132,15 +282,17 @@ export const AdminDashboard: React.FC = () => {
         try {
           const analyses = await bandsApi.getAllEmployeesAnalysis();
           setAllEmployeesAnalysis(analyses);
-        } catch (e) {}
+        } catch (e) { }
       } else if (activeTab === 'employees') {
         const employeesData = await adminDashboardApi.getEmployees(0, 1000, departmentFilter || undefined);
         setEmployees(employeesData);
+      } else if (activeTab === 'courses') {
+        await loadCourses();
       } else if (activeTab === 'skills') {
         // Load category templates
         const categories = await categoriesApi.getAll();
         setEmployeeCategories(categories);
-        
+
         // Load templates with stats for each category
         const templates: Record<string, any[]> = {};
         for (const category of categories) {
@@ -354,7 +506,7 @@ export const AdminDashboard: React.FC = () => {
   const handleToggleMandatory = async (category: string, templateId: number, currentStatus: boolean) => {
     try {
       const result = await categoriesApi.updateMandatoryStatus(category, templateId, !currentStatus);
-      
+
       if (result.employees_updated !== undefined && result.employees_updated > 0) {
         setSkillsUploadResult({
           message: result.message,
@@ -363,7 +515,7 @@ export const AdminDashboard: React.FC = () => {
           rows_updated: 0,
         });
       }
-      
+
       // Reload templates
       loadDashboardData();
     } catch (err: any) {
@@ -394,14 +546,14 @@ export const AdminDashboard: React.FC = () => {
         description: `Sample skill for ${newSkillCategoryName.trim()} category`,
         category: newSkillCategoryName.trim()
       });
-      
+
       setSkillsUploadResult({
         message: `Skill category "${newSkillCategoryName.trim()}" created successfully`,
         rows_processed: 1,
         rows_created: 1,
         rows_updated: 0,
       });
-      
+
       setShowAddSkillCategoryModal(false);
       setNewSkillCategoryName('');
       // Reload data to show the new category
@@ -429,21 +581,21 @@ export const AdminDashboard: React.FC = () => {
         category: addSkillForCategory,
         addToCategory: addSkillForPathway
       });
-      
+
       // Create skill and add it to the employee category template
       await skillsApi.create({
         name: newSkillName.trim(),
         description: `Skill in ${addSkillForCategory} category`,
         category: addSkillForCategory
       }, addSkillForPathway); // Pass the employee category (pathway) to add to template
-      
+
       setSkillsUploadResult({
         message: `Skill "${newSkillName.trim()}" created successfully in "${addSkillForCategory}"`,
         rows_processed: 1,
         rows_created: 1,
         rows_updated: 0,
       });
-      
+
       setShowAddSkillModal(false);
       setNewSkillName('');
       // Reload data to show the new skill
@@ -471,182 +623,107 @@ export const AdminDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F6F2F4]">
-      <header className="bg-[#F6F2F4] shadow-sm border-b border-gray-200 -mx-4">
-        <div className="w-full px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <img src={NxzenLogo} alt="Nxzen" className="h-8 w-8 object-cover" />
-            <span className="text-xl font-semibold text-gray-800">nxzen</span>
-            <span aria-hidden className="h-6 w-px bg-gray-300" />
-            <h1 className="text-2xl font-bold text-gray-800 italic" style={{ fontFamily: '"Times New Roman", Times, serif', fontStyle: 'italic' }}>HR/Admin Dashboard</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-200">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-gray-700">
-                <path fillRule="evenodd" d="M12 2a5 5 0 100 10 5 5 0 000-10zm-7 18a7 7 0 1114 0H5z" clipRule="evenodd" />
-              </svg>
-              <div className="text-sm font-medium text-gray-800">
-                {((user as any)?.first_name && (user as any)?.last_name)
-                  ? `${(user as any).first_name} ${(user as any).last_name}`
-                  : (user?.employee_id || (user?.email ? user.email.split('@')[0] : 'User'))}
-              <br />
-              <span className="text-xs text-gray-500">{user?.email}</span>
-            </div>
-             </div>
-            <button
-              onClick={() => { authApi.logout(); navigate('/login'); }}
-              title="Logout"
-              className="p-2 rounded-lg hover:bg-gray-200"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-red-600 transform rotate-180">
-                <path d="M16 13v-2H7V8l-5 4 5 4v-3h9zm3-11H9c-1.1 0-2 .9-2 2v3h2V4h10v16H9v-2H7v3c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </header>
+      <PageHeader title="Admin Dashboard" subtitle="Overview of skills, employees, and learning" />
 
       <div className="max-w-7xl mx-auto px-6 mt-4">
-        <h2 className="text-center text-lg font-semibold text-gray-800 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-            <button
-            onClick={() => setActiveTab('overview')}
-            className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
-              activeTab === 'overview' ? 'ring-2 ring-blue-500 bg-white' : 'bg-white'
-            }`}
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-blue-600">
-                <rect x="4" y="4" width="6" height="6" rx="1"></rect>
-                <rect x="14" y="4" width="6" height="6" rx="1"></rect>
-                <rect x="4" y="14" width="6" height="6" rx="1"></rect>
-                <rect x="14" y="14" width="6" height="6" rx="1"></rect>
-              </svg>
-            </span>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Overview</div>
-              <div className="text-xs text-gray-500">Summary metrics</div>
+        {/* Tabs */}
+        {/* Navigation / Quick Actions */}
+        {/* Navigation / Quick Actions */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-gray-800 mb-6 text-center">Quick Actions</h2>
+          <div className="flex flex-wrap justify-center gap-4">
+            <div
+              onClick={() => setActiveTab('overview')}
+              className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'overview' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
+            >
+              <div className={`p-2 rounded-lg transition-transform ${activeTab === 'overview' ? 'scale-110 bg-red-50' : 'bg-blue-50 group-hover:scale-110'}`}>
+                <LayoutGrid className={`w-6 h-6 ${activeTab === 'overview' ? 'text-red-500' : 'text-blue-600'}`} />
+              </div>
+              <div>
+                <h3 className={`font-bold text-sm ${activeTab === 'overview' ? 'text-red-500' : 'text-gray-800'}`}>Overview</h3>
+                <p className="text-xs text-gray-500">Summary metrics</p>
+              </div>
             </div>
-            </button>
-            <button
-            onClick={() => {
-              setActiveTab('skill-gap');
-              loadAllEmployeesAnalysis();
-            }}
-            className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
-              activeTab === 'skill-gap' ? 'ring-2 ring-rose-500 bg-white' : 'bg-white'
-            }`}
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-rose-600">
-                <path d="M3 12c3-5 6-7 9-7s6 2 9 7"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M15 15l4 4"></path>
-              </svg>
-            </span>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Skill Gap Analysis</div>
-              <div className="text-xs text-gray-500">Analyze gaps</div>
-            </div>
-            </button>
-              <button
-            onClick={() => setActiveTab('employees')}
-            className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
-              activeTab === 'employees' ? 'ring-2 ring-green-500 bg-white' : 'bg-white'
-            }`}
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-green-50">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-green-600">
-                <circle cx="8" cy="9" r="3"></circle>
-                <circle cx="16" cy="9" r="3"></circle>
-                <path d="M2 20c0-3.5 3.5-6 8-6s8 2.5 8 6"></path>
-              </svg>
-            </span>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Employees</div>
-              <div className="text-xs text-gray-500">Manage employees</div>
-          </div>
-              </button>
-          <button
-            onClick={() => setActiveTab('skills')}
-            className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
-              activeTab === 'skills' ? 'ring-2 ring-purple-500 bg-white' : 'bg-white'
-            }`}
-          >
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-purple-100">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-8 h-8 text-purple-700">
-                <path fill="currentColor" d="M12 2c4.97 0 9 3.58 9 8.3 0 3.73-2.65 6.93-6.25 7.67V21H9.5v-2.06C6.07 18.4 3 15.15 3 10.96 3 5.66 7.03 2 12 2z"/>
-                <g fill="#ffffff">
-                  <circle cx="12" cy="11" r="2"/>
-                  <rect x="11.3" y="6.5" width="1.4" height="2.2" rx="0.3"/>
-                  <rect x="15.8" y="10.3" width="2.2" height="1.4" rx="0.3"/>
-                  <rect x="11.3" y="13.3" width="1.4" height="2.2" rx="0.3"/>
-                  <rect x="6" y="10.3" width="2.2" height="1.4" rx="0.3"/>
-                  <rect x="14.7" y="8" width="1.6" height="1.6" rx="0.3"/>
-                  <rect x="8.7" y="8" width="1.6" height="1.6" rx="0.3"/>
-                  <rect x="14.7" y="12.9" width="1.6" height="1.6" rx="0.3"/>
-                  <rect x="8.7" y="12.9" width="1.6" height="1.6" rx="0.3"/>
-                </g>
-              </svg>
-            </span>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Skills</div>
-              <div className="text-xs text-gray-500">Browse skills</div>
-        </div>
-          </button>
-              <button
-            onClick={() => setActiveTab('improvements')}
-            className={`flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition ${
-              activeTab === 'improvements' ? 'ring-2 ring-indigo-500 bg-white' : 'bg-white'
-            }`}
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-indigo-600">
-                <path d="M6 18v-4"></path>
-                <path d="M12 18v-7"></path>
-                <path d="M18 18v-10"></path>
-                <path d="M5 6l5 5 4-3 5 5"></path>
-              </svg>
-            </span>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Improvements</div>
-              <div className="text-xs text-gray-500">Track improvements</div>
-            </div>
-              </button>
-              <button
-            onClick={() => navigate('/admin/learning')}
-            className="flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition bg-white"
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-purple-600">
-                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-              </svg>
-            </span>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Learning</div>
-              <div className="text-xs text-gray-500">Manage courses</div>
-            </div>
-              </button>
-              <button
-            onClick={() => navigate('/admin/career-pathways')}
-            className="flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition bg-white"
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-teal-600">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-                <path d="M2 17l10 5 10-5"></path>
-                <path d="M2 12l10 5 10-5"></path>
-              </svg>
-            </span>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Career Pathways</div>
-              <div className="text-xs text-gray-500">Skill requirements</div>
-            </div>
-              </button>
-        </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+            <div
+              onClick={() => { setActiveTab('skill-gap'); navigate('/admin/dashboard?tab=skill-gap'); }}
+              className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'skill-gap' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
+            >
+              <div className={`p-2 rounded-lg transition-transform ${activeTab === 'skill-gap' ? 'scale-110 bg-red-50' : 'bg-red-50 group-hover:scale-110'}`}>
+                <Target className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className={`font-bold text-sm ${activeTab === 'skill-gap' ? 'text-red-500' : 'text-gray-800'}`}>Skill Gap Analysis</h3>
+                <p className="text-xs text-gray-500">Analyze gaps</p>
+              </div>
+            </div>
+
+            <div
+              onClick={() => { setActiveTab('employees'); navigate('/admin/dashboard?tab=employees'); }}
+              className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'employees' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
+            >
+              <div className={`p-2 rounded-lg transition-transform ${activeTab === 'employees' ? 'scale-110 bg-red-50' : 'bg-green-50 group-hover:scale-110'}`}>
+                <Users className="w-6 h-6 text-green-600" />
+              </div>
+              <div>
+                <h3 className={`font-bold text-sm ${activeTab === 'employees' ? 'text-red-500' : 'text-gray-800'}`}>Employees</h3>
+                <p className="text-xs text-gray-500">Manage employees</p>
+              </div>
+            </div>
+
+            <div
+              onClick={() => { setActiveTab('skills'); navigate('/admin/dashboard?tab=skills'); }}
+              className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'skills' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
+            >
+              <div className={`p-2 rounded-lg transition-transform ${activeTab === 'skills' ? 'scale-110 bg-red-50' : 'bg-purple-50 group-hover:scale-110'}`}>
+                <Award className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h3 className={`font-bold text-sm ${activeTab === 'skills' ? 'text-red-500' : 'text-gray-800'}`}>Skills</h3>
+                <p className="text-xs text-gray-500">Browse skills</p>
+              </div>
+            </div>
+
+            <div
+              onClick={() => { setActiveTab('improvements'); navigate('/admin/dashboard?tab=improvements'); }}
+              className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'improvements' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
+            >
+              <div className={`p-2 rounded-lg transition-transform ${activeTab === 'improvements' ? 'scale-110 bg-red-50' : 'bg-indigo-50 group-hover:scale-110'}`}>
+                <TrendingUp className="w-6 h-6 text-indigo-600" />
+              </div>
+              <div>
+                <h3 className={`font-bold text-sm ${activeTab === 'improvements' ? 'text-red-500' : 'text-gray-800'}`}>Improvements</h3>
+                <p className="text-xs text-gray-500">Track improvements</p>
+              </div>
+            </div>
+
+            <div
+              onClick={() => { setActiveTab('courses'); navigate('/admin/dashboard?tab=courses'); }}
+              className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'courses' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
+            >
+              <div className={`p-2 rounded-lg transition-transform ${activeTab === 'courses' ? 'scale-110 bg-red-50' : 'bg-violet-50 group-hover:scale-110'}`}>
+                <BookOpen className="w-6 h-6 text-violet-600" />
+              </div>
+              <div>
+                <h3 className={`font-bold text-sm ${activeTab === 'courses' ? 'text-red-500' : 'text-gray-800'}`}>Learning</h3>
+                <p className="text-xs text-gray-500">Manage courses</p>
+              </div>
+            </div>
+
+            <div
+              onClick={() => { setActiveTab('career-pathways'); navigate('/admin/dashboard?tab=career-pathways'); }}
+              className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'career-pathways' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
+            >
+              <div className={`p-2 rounded-lg transition-transform ${activeTab === 'career-pathways' ? 'scale-110 bg-red-50' : 'bg-teal-50 group-hover:scale-110'}`}>
+                <Layers className={`w-6 h-6 ${activeTab === 'career-pathways' ? 'text-red-600' : 'text-teal-600'}`} />
+              </div>
+              <div>
+                <h3 className={`font-bold text-sm ${activeTab === 'career-pathways' ? 'text-red-500' : 'text-gray-800'}`}>Career Pathways</h3>
+                <p className="text-xs text-gray-500">Skill requirements</p>
+              </div>
+            </div>
+          </div>
+        </div>
         {/* Upload Result Messages */}
         {uploadError && (
           <div className="mb-4 rounded-md bg-red-50 p-4">
@@ -657,8 +734,8 @@ export const AdminDashboard: React.FC = () => {
           <div className="mb-4 rounded-md bg-green-50 p-4">
             <p className="text-sm font-semibold text-green-800">{skillsUploadResult.message}</p>
             <p className="text-xs text-green-600 mt-2">
-              Processed: {skillsUploadResult.rows_processed} | 
-              Created: {skillsUploadResult.rows_created} | 
+              Processed: {skillsUploadResult.rows_processed} |
+              Created: {skillsUploadResult.rows_created} |
               Updated: {skillsUploadResult.rows_updated}
             </p>
             {skillsUploadResult.errors && skillsUploadResult.errors.length > 0 && (
@@ -713,7 +790,7 @@ export const AdminDashboard: React.FC = () => {
         {activeTab === 'overview' && stats && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {(() => {
-              const ratingOrder = ['Beginner','Developing','Intermediate','Advanced','Expert'];
+              const ratingOrder = ['Beginner', 'Developing', 'Intermediate', 'Advanced', 'Expert'];
               const ratingColors: Record<string, string> = {
                 Beginner: '#22c55e',
                 Developing: '#3b82f6',
@@ -753,7 +830,7 @@ export const AdminDashboard: React.FC = () => {
               const bandRatingsData = Object.keys(bandRatingsMap).sort().map(b => ({ band: b, ...bandRatingsMap[b] }));
               return (
                 <>
-                  
+
 
                   <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
                     <h3 className="text-sm font-semibold text-gray-800 mb-3">Ratings Trend</h3>
@@ -798,8 +875,8 @@ export const AdminDashboard: React.FC = () => {
                           <div className="text-3xl font-bold text-green-600">{existing}</div>
                           <div className="text-sm text-gray-600">Employees with Skills</div>
                           <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-green-500 rounded-full" 
+                            <div
+                              className="h-full bg-green-500 rounded-full"
                               style={{ width: `${stats.total_employees > 0 ? (existing / stats.total_employees) * 100 : 0}%` }}
                             />
                           </div>
@@ -811,8 +888,8 @@ export const AdminDashboard: React.FC = () => {
                           <div className="text-3xl font-bold text-indigo-600">{interested}</div>
                           <div className="text-sm text-gray-600">With Interested Skills</div>
                           <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-indigo-500 rounded-full" 
+                            <div
+                              className="h-full bg-indigo-500 rounded-full"
                               style={{ width: `${stats.total_employees > 0 ? (interested / stats.total_employees) * 100 : 0}%` }}
                             />
                           </div>
@@ -829,15 +906,14 @@ export const AdminDashboard: React.FC = () => {
                         <h3 className="text-sm font-semibold text-gray-800">Top 10 Skills by Adoption</h3>
                         <div className="flex items-center gap-2">
                           <label className="text-xs text-gray-600">Add skill</label>
-                          <select
-                            onChange={(e) => { const v = e.target.value; if (v) { handleAddAdoptionSkill(v); } e.currentTarget.selectedIndex = 0; }}
-                            className="px-2 py-1 border border-gray-300 rounded bg-white text-xs"
-                          >
-                            <option value="">Select skill</option>
-                            {availableOptions.slice(0, 50).map(n => (
-                              <option key={n} value={n}>{n}</option>
-                            ))}
-                          </select>
+                          <div className="w-48">
+                            <SearchableSelect
+                              options={availableOptions.map(n => ({ value: n, label: n }))}
+                              value={null}
+                              onChange={(v) => handleAddAdoptionSkill(v as string)}
+                              placeholder="Add skill..."
+                            />
+                          </div>
                         </div>
                       </div>
                       <div className="h-96">
@@ -867,8 +943,8 @@ export const AdminDashboard: React.FC = () => {
             {/* Skill-based Search Section */}
             <div className="mb-6 bg-blue-50 rounded-lg p-4 border border-blue-200">
               <h3 className="text-lg font-semibold mb-3 text-gray-800">Search Employees by Multiple Skills & Ratings</h3>
-             
-              
+
+
               <div className="space-y-3">
                 {searchCriteria.map((criterion, index) => (
                   <div key={index} className="flex gap-3 items-end flex-wrap bg-white p-3 rounded-lg border border-gray-200">
@@ -911,7 +987,7 @@ export const AdminDashboard: React.FC = () => {
                     )}
                   </div>
                 ))}
-                
+
                 <div className="flex gap-2 items-center">
                   <button
                     onClick={addCriterion}
@@ -936,7 +1012,7 @@ export const AdminDashboard: React.FC = () => {
                   )}
                 </div>
               </div>
-              
+
               {isSearchMode && (
                 <div className="mt-3 text-sm text-gray-600">
                   Found {searchResults.length} employee{searchResults.length !== 1 ? 's' : ''} matching {searchResults[0]?.criteria_count || searchCriteria.filter(c => c.skill_name.trim()).length} criteria
@@ -976,7 +1052,7 @@ export const AdminDashboard: React.FC = () => {
                     onChange={(e) => { setEmployeesPerPage(Number(e.target.value)); setEmployeesPage(1); }}
                     className="px-2 py-1 border border-gray-300 rounded-lg bg-white text-sm"
                   >
-                    {[5,10,20,50,100].map(n => <option key={n} value={n}>{n}</option>)}
+                    {[5, 10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </div>
                 <table className="min-w-full divide-y divide-gray-200">
@@ -1007,7 +1083,7 @@ export const AdminDashboard: React.FC = () => {
                         }
                         return true;
                       })
-                      .slice((employeesPage-1)*employeesPerPage, (employeesPage-1)*employeesPerPage + employeesPerPage)
+                      .slice((employeesPage - 1) * employeesPerPage, (employeesPage - 1) * employeesPerPage + employeesPerPage)
                       .map((result) => {
                         const emp = result.employee;
                         return (
@@ -1107,7 +1183,7 @@ export const AdminDashboard: React.FC = () => {
                     onChange={(e) => { setEmployeesPerPage(Number(e.target.value)); setEmployeesPage(1); }}
                     className="px-2 py-1 border border-gray-300 rounded-lg bg-white text-sm"
                   >
-                    {[5,10,20,50,100].map(n => <option key={n} value={n}>{n}</option>)}
+                    {[5, 10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </div>
                 <table className="min-w-full divide-y divide-gray-200">
@@ -1136,24 +1212,24 @@ export const AdminDashboard: React.FC = () => {
                         }
                         return true;
                       })
-                      .slice((employeesPage-1)*employeesPerPage, (employeesPage-1)*employeesPerPage + employeesPerPage)
+                      .slice((employeesPage - 1) * employeesPerPage, (employeesPage - 1) * employeesPerPage + employeesPerPage)
                       .map((emp) => (
-                      <tr key={emp.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{emp.employee_id}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{emp.name}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.company_email || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.department || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.role || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <button
-                            onClick={() => handleViewEmployeeSkills(emp.employee_id)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            View Skills
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                        <tr key={emp.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{emp.employee_id}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{emp.name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.company_email || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.department || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.role || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <button
+                              onClick={() => handleViewEmployeeSkills(emp.employee_id)}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              View Skills
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
                 <div className="flex justify-end items-center gap-2 p-3">
@@ -1243,7 +1319,7 @@ export const AdminDashboard: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  
+
                   {/* Body */}
                   <div className="p-6">
                     {uploadError && (
@@ -1266,7 +1342,7 @@ export const AdminDashboard: React.FC = () => {
                       This will create a new category for organizing employees and their skill templates.
                     </p>
                   </div>
-                  
+
                   {/* Footer */}
                   <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
                     <button
@@ -1326,7 +1402,7 @@ export const AdminDashboard: React.FC = () => {
                     .map((category) => {
                       const templates = categoryTemplates[category] || [];
                       const isUploading = uploadingCategory === category;
-                      
+
                       // Group skills by skill category
                       const groupedSkills: Record<string, any[]> = {};
                       templates.forEach((template) => {
@@ -1336,7 +1412,7 @@ export const AdminDashboard: React.FC = () => {
                         }
                         groupedSkills[skillCategory].push(template);
                       });
-                      
+
                       return (
                         <div key={category} className="bg-white rounded-lg shadow-md overflow-hidden">
                           {/* Category Header */}
@@ -1376,7 +1452,7 @@ export const AdminDashboard: React.FC = () => {
                               className="hidden"
                             />
                           </div>
-                          
+
                           {/* Skills Table */}
                           {templates.length === 0 ? (
                             <div className="text-center py-12 text-gray-500 bg-gray-50">
@@ -1387,11 +1463,11 @@ export const AdminDashboard: React.FC = () => {
                               {Object.entries(groupedSkills).sort(([a], [b]) => a.localeCompare(b)).map(([skillCategory, skillTemplates]) => {
                                 const subcategoryKey = `${category}-${skillCategory}`;
                                 const isExpanded = expandedSubcategories[subcategoryKey] === true; // Default to collapsed
-                                
+
                                 return (
                                   <div key={skillCategory} className="border-b border-gray-200 last:border-b-0">
                                     {/* Skill Category Header - Clickable */}
-                                    <div 
+                                    <div
                                       className="bg-gray-50 px-6 py-3 cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between"
                                       onClick={() => toggleSubcategory(subcategoryKey)}
                                     >
@@ -1400,11 +1476,13 @@ export const AdminDashboard: React.FC = () => {
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
+                                            console.log('Add Skill clicked', { category, skillCategory });
                                             setAddSkillForPathway(category);
                                             setAddSkillForCategory(skillCategory);
                                             setNewSkillName('');
                                             setUploadError('');
                                             setShowAddSkillModal(true);
+                                            console.log('Modal state set to true');
                                           }}
                                           className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs font-medium"
                                           title="Add Skill to Category"
@@ -1414,100 +1492,100 @@ export const AdminDashboard: React.FC = () => {
                                         <span className="text-sm text-gray-600">
                                           {skillTemplates.length} skill{skillTemplates.length !== 1 ? 's' : ''}
                                         </span>
-                                        <svg 
+                                        <svg
                                           className={`w-5 h-5 text-gray-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                                          fill="none" 
-                                          stroke="currentColor" 
+                                          fill="none"
+                                          stroke="currentColor"
                                           viewBox="0 0 24 24"
                                         >
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                         </svg>
                                       </div>
                                     </div>
-                                    
+
                                     {/* Table - Collapsible */}
                                     {isExpanded && (
                                       <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200">
-                                      <thead className="bg-gray-50">
-                                        <tr>
-                                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Skill
-                                          </th>
-                                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                                            Mandatory
-                                          </th>
-                                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                                            Employees
-                                          </th>
-                                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                                            Beginner
-                                          </th>
-                                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                                            Developing
-                                          </th>
-                                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                                            Intermediate
-                                          </th>
-                                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                                            Advanced
-                                          </th>
-                                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                                            Expert
-                                          </th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="bg-white divide-y divide-gray-200">
-                                        {skillTemplates.map((template) => (
-                                          <tr key={template.id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4">
-                                              <div className="text-sm font-medium text-gray-900">
-                                                {template.skill?.name || 'Unknown Skill'}
-                                              </div>
-                                              {template.skill?.description && (
-                                                <div className="text-xs text-gray-500 mt-1">
-                                                  {template.skill.description}
-                                                </div>
-                                              )}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-center">
-                                              {template.is_required ? (
-                                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded">
-                                                  Mandatory Skill
-                                                </span>
-                                              ) : (
-                                                <input
-                                                  type="checkbox"
-                                                  id={`mandatory-${template.id}`}
-                                                  checked={false}
-                                                  onChange={() => handleToggleMandatory(category, template.id, template.is_required)}
-                                                  className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 rounded focus:ring-red-500 cursor-pointer"
-                                                  title="Mark as Mandatory"
-                                                />
-                                              )}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-semibold text-gray-900">
-                                              {template.total_employees}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-                                              {template.rating_breakdown?.Beginner || 0}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-                                              {template.rating_breakdown?.Developing || 0}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-                                              {template.rating_breakdown?.Intermediate || 0}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-                                              {template.rating_breakdown?.Advanced || 0}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-                                              {template.rating_breakdown?.Expert || 0}
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
+                                        <table className="min-w-full divide-y divide-gray-200">
+                                          <thead className="bg-gray-50">
+                                            <tr>
+                                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Skill
+                                              </th>
+                                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                                                Mandatory
+                                              </th>
+                                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                                Employees
+                                              </th>
+                                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                                Beginner
+                                              </th>
+                                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                                Developing
+                                              </th>
+                                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                                Intermediate
+                                              </th>
+                                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                                Advanced
+                                              </th>
+                                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                                Expert
+                                              </th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="bg-white divide-y divide-gray-200">
+                                            {skillTemplates.map((template) => (
+                                              <tr key={template.id} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4">
+                                                  <div className="text-sm font-medium text-gray-900">
+                                                    {template.skill?.name || 'Unknown Skill'}
+                                                  </div>
+                                                  {template.skill?.description && (
+                                                    <div className="text-xs text-gray-500 mt-1">
+                                                      {template.skill.description}
+                                                    </div>
+                                                  )}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                  {template.is_required ? (
+                                                    <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded">
+                                                      Mandatory Skill
+                                                    </span>
+                                                  ) : (
+                                                    <input
+                                                      type="checkbox"
+                                                      id={`mandatory-${template.id}`}
+                                                      checked={false}
+                                                      onChange={() => handleToggleMandatory(category, template.id, template.is_required)}
+                                                      className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 rounded focus:ring-red-500 cursor-pointer"
+                                                      title="Mark as Mandatory"
+                                                    />
+                                                  )}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-semibold text-gray-900">
+                                                  {template.total_employees}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+                                                  {template.rating_breakdown?.Beginner || 0}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+                                                  {template.rating_breakdown?.Developing || 0}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+                                                  {template.rating_breakdown?.Intermediate || 0}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+                                                  {template.rating_breakdown?.Advanced || 0}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+                                                  {template.rating_breakdown?.Expert || 0}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
                                       </div>
                                     )}
                                   </div>
@@ -1525,12 +1603,33 @@ export const AdminDashboard: React.FC = () => {
                   }
                   return true;
                 }).length === 0 && categorySearchQuery && (
-                  <div className="text-center py-8 text-gray-500">
-                    No categories found matching "{categorySearchQuery}"
-                  </div>
-                )}
+                    <div className="text-center py-8 text-gray-500">
+                      No categories found matching "{categorySearchQuery}"
+                    </div>
+                  )}
               </div>
             )}
+
+            {/* Template Management Section */}
+            <TemplateManagement
+              onUploadSuccess={(result) => {
+                // Convert TemplateUploadResponse to UploadResponse format
+                setSkillsUploadResult({
+                  message: result.message,
+                  rows_processed: result.templates_created,
+                  rows_created: result.templates_created,
+                  rows_updated: 0,
+                });
+              }}
+              onUploadError={(error) => setUploadError(error)}
+            />
+          </div>
+        )}
+
+        {/* Career Pathways Tab */}
+        {activeTab === 'career-pathways' && (
+          <div className="mt-6">
+            <CareerPathways isEmbedded={true} />
           </div>
         )}
 
@@ -1538,287 +1637,265 @@ export const AdminDashboard: React.FC = () => {
         {activeTab === 'skill-gap' && (
           <div>
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">All Employees Skill Gap Analysis</h2>
-              <p className="text-sm text-gray-600">View skill gaps for all employees based on their band requirements</p>
-            </div>
-            
-            {/* Search and Pagination Controls */}
-            <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              <div className="flex-1 max-w-md">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search by employee name or ID..."
-                    value={skillGapSearchQuery}
-                    onChange={(e) => setSkillGapSearchQuery(e.target.value)}
-                    className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                  <svg
-                    className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600">Employees per page</label>
-                <select
-                  value={skillGapPerPage}
-                  onChange={(e) => {
-                    setSkillGapPerPage(Number(e.target.value));
-                    setSkillGapPage(1);
-                  }}
-                  className="px-2 py-1 border border-gray-300 rounded-lg bg-white text-sm"
-                >
-                  {[5, 10, 20, 50].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Skill Gap Analysis</h2>
+              <p className="text-sm text-gray-600">View employees with and without skill gaps based on their band requirements</p>
             </div>
 
             {loadingSkillGap ? (
               <div className="text-center py-8 text-gray-500">Loading skill gap analysis...</div>
             ) : (() => {
-              // Filter employees based on search query
-              const filteredAnalysis = allEmployeesAnalysis.filter((analysis) => {
-                if (!skillGapSearchQuery.trim()) return true;
-                const query = skillGapSearchQuery.toLowerCase();
-                return (
-                  analysis.employee_name.toLowerCase().includes(query) ||
-                  analysis.employee_id.toLowerCase().includes(query) ||
-                  analysis.band.toLowerCase().includes(query)
-                );
-              });
-
-              // Calculate pagination
-              const totalPages = Math.max(1, Math.ceil(filteredAnalysis.length / skillGapPerPage));
-              const startIndex = (skillGapPage - 1) * skillGapPerPage;
-              const endIndex = startIndex + skillGapPerPage;
-              const paginatedAnalysis = filteredAnalysis.slice(startIndex, endIndex);
-
-              if (filteredAnalysis.length === 0) {
-                return (
-                  <div className="text-center py-8 text-gray-500">
-                    {skillGapSearchQuery
-                      ? `No employees found matching "${skillGapSearchQuery}"`
-                      : 'No employees found with skill gap data.'}
-                  </div>
-                );
-              }
+              // Separate employees into two groups: with gaps and without gaps
+              const employeesWithGaps = allEmployeesAnalysis.filter(analysis =>
+                analysis.skills_below_requirement > 0
+              );
+              const employeesWithoutGaps = allEmployeesAnalysis.filter(analysis =>
+                analysis.skills_below_requirement === 0
+              );
 
               return (
                 <>
-                  <div className="mb-4 text-sm text-gray-600">
-                    Showing {startIndex + 1} to {Math.min(endIndex, filteredAnalysis.length)} of {filteredAnalysis.length} employees
-                  </div>
-                  <div className="space-y-6">
-                    {paginatedAnalysis.map((analysis) => (
-                  <div
-                    key={analysis.employee_id}
-                    className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden cursor-pointer"
-                    onClick={() => toggleEmployeeExpanded(analysis.employee_id)}
-                  >
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200">
-                      <div className="flex justify-between items-center">
+                  {/* Section 1: Employees WITH Gaps */}
+                  <div className="mb-8">
+                    <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+                      <div className="flex items-center justify-between">
                         <div>
-                          <h3 className="text-lg font-semibold text-gray-900">{analysis.employee_name}</h3>
-                          <p className="text-sm text-gray-600">Employee ID: {analysis.employee_id}</p>
+                          <h3 className="text-lg font-bold text-red-800">Employees WITH Skill Gaps</h3>
+                          <p className="text-sm text-red-700 mt-1">
+                            {employeesWithGaps.length} employee(s) have skills below requirements
+                          </p>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-center">
-                            <div className="text-xs text-gray-500 mb-1">Band</div>
-                            <div className="text-2xl font-bold text-indigo-600">{analysis.band}</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-xs text-gray-500 mb-1">Avg Rating</div>
-                            <div className="text-lg font-semibold text-gray-900">{analysis.average_rating.toFixed(2)}</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-xs text-gray-500 mb-1">Total Skills</div>
-                            <div className="text-lg font-semibold text-gray-900">{analysis.total_skills}</div>
-                          </div>
-                          <span className="flex items-center p-2  border-gray-300 text-gray-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-4 h-4 transition-transform ${expandedEmployees.includes(analysis.employee_id) ? 'rotate-180' : ''}`}
-                            >
-                              <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-4 flex gap-4">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-block w-3 h-3 rounded-full bg-green-500"></span>
-                          <span className="text-sm text-gray-700">
-                            Above: {analysis.skills_above_requirement}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="inline-block w-3 h-3 rounded-full bg-gray-400"></span>
-                          <span className="text-sm text-gray-700">
-                            At: {analysis.skills_at_requirement}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="inline-block w-3 h-3 rounded-full bg-yellow-500"></span>
-                          <span className="text-sm text-gray-700">
-                            Below: {analysis.skills_below_requirement}
-                          </span>
-                        </div>
+                        <div className="text-3xl font-bold text-red-600">{employeesWithGaps.length}</div>
                       </div>
                     </div>
-                    {expandedEmployees.includes(analysis.employee_id) && (
-                      analysis.skill_gaps.length > 0 ? (
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Skill</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Category</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Current Rating</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Required Rating</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Gap</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                              {analysis.skill_gaps.map((gap, idx) => {
-                                const getGapColor = (gap: number) => {
-                                  if (gap > 0) return 'bg-green-100 text-green-800';
-                                  if (gap === 0) return 'bg-gray-100 text-gray-800';
-                                  return 'bg-yellow-100 text-yellow-800';
-                                };
-                                const getRatingColor = (rating?: string) => {
-                                  switch (rating) {
-                                    case 'Expert': return 'bg-purple-100 text-purple-800';
-                                    case 'Advanced': return 'bg-orange-100 text-orange-800';
-                                    case 'Intermediate': return 'bg-yellow-100 text-yellow-800';
-                                    case 'Developing': return 'bg-blue-100 text-blue-800';
-                                    case 'Beginner': return 'bg-green-100 text-green-800';
-                                    default: return 'bg-gray-100 text-gray-600';
-                                  }
-                                };
-                                return (
-                                  <tr key={idx} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                      {gap.skill_name}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                      {gap.skill_category || 'N/A'}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                      {gap.current_rating_text ? (
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRatingColor(gap.current_rating_text)}`}>
-                                          {gap.current_rating_text} ({gap.current_rating_number || 'N/A'})
-                                        </span>
-                                      ) : (
-                                        <span className="text-sm text-gray-400">No rating</span>
-                                      )}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRatingColor(gap.required_rating_text)}`}>
-                                        {gap.required_rating_text} ({gap.required_rating_number})
-                                      </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getGapColor(gap.gap)}`}>
-                                        {gap.gap > 0 ? '+' : ''}{gap.gap}
-                                      </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                      {gap.gap > 0 ? (
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                          Above Requirement
-                                        </span>
-                                      ) : gap.gap === 0 ? (
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                          At Requirement
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                          Below Requirement
-                                        </span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="px-6 py-8 text-center text-sm text-gray-500">
-                          No skill gaps found for this employee.
-                        </div>
-                      )
+
+                    {employeesWithGaps.length === 0 ? (
+                      <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+                        <svg className="w-16 h-16 mx-auto mb-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <p className="text-lg font-medium text-gray-900">No employees with skill gaps!</p>
+                        <p className="text-sm text-gray-500 mt-1">All employees meet their band requirements.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {employeesWithGaps.map((analysis) => (
+                          <div
+                            key={analysis.employee_id}
+                            className="bg-white rounded-lg shadow-md border-l-4 border-red-500 overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                            onClick={() => toggleEmployeeExpanded(analysis.employee_id)}
+                          >
+                            <div className="bg-gradient-to-r from-red-50 to-orange-50 px-6 py-4">
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <h3 className="text-lg font-semibold text-gray-900">{analysis.employee_name}</h3>
+                                  <p className="text-sm text-gray-600">Employee ID: {analysis.employee_id}</p>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <div className="text-center">
+                                    <div className="text-xs text-gray-500 mb-1">Band</div>
+                                    <div className="text-2xl font-bold text-indigo-600">{analysis.band}</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-xs text-gray-500 mb-1">Gaps</div>
+                                    <div className="text-2xl font-bold text-red-600">{analysis.skills_below_requirement}</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-xs text-gray-500 mb-1">Total Skills</div>
+                                    <div className="text-lg font-semibold text-gray-900">{analysis.total_skills}</div>
+                                  </div>
+                                  <span className="flex items-center p-2 text-gray-700">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-4 h-4 transition-transform ${expandedEmployees.includes(analysis.employee_id) ? 'rotate-180' : ''}`}>
+                                      <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="mt-4 flex gap-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="inline-block w-3 h-3 rounded-full bg-green-500"></span>
+                                  <span className="text-sm text-gray-700">Above: {analysis.skills_above_requirement}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="inline-block w-3 h-3 rounded-full bg-gray-400"></span>
+                                  <span className="text-sm text-gray-700">At: {analysis.skills_at_requirement}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="inline-block w-3 h-3 rounded-full bg-red-500"></span>
+                                  <span className="text-sm text-gray-700">Below: {analysis.skills_below_requirement}</span>
+                                </div>
+                              </div>
+                            </div>
+                            {expandedEmployees.includes(analysis.employee_id) && (
+                              analysis.skill_gaps.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                  <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                      <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Skill</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Source</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Current Rating</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Required Rating</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Gap</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                      {analysis.skill_gaps.filter(gap => gap.gap < 0).map((gap, idx) => {
+                                        const getGapColor = (gap: number) => {
+                                          if (gap > 0) return 'bg-green-100 text-green-800';
+                                          if (gap === 0) return 'bg-gray-100 text-gray-800';
+                                          return 'bg-red-100 text-red-800';
+                                        };
+                                        const getRatingColor = (rating?: string) => {
+                                          switch (rating) {
+                                            case 'Expert': return 'bg-purple-100 text-purple-800';
+                                            case 'Advanced': return 'bg-orange-100 text-orange-800';
+                                            case 'Intermediate': return 'bg-yellow-100 text-yellow-800';
+                                            case 'Developing': return 'bg-blue-100 text-blue-800';
+                                            case 'Beginner': return 'bg-green-100 text-green-800';
+                                            case 'Not Rated': return 'bg-red-50 text-red-600 border border-red-200';
+                                            default: return 'bg-gray-100 text-gray-600';
+                                          }
+                                        };
+                                        const getSourceBadge = (source: string) => {
+                                          switch (source) {
+                                            case 'Template': return 'bg-blue-100 text-blue-800';
+                                            case 'Role': return 'bg-purple-100 text-purple-800';
+                                            case 'Band Default': return 'bg-gray-100 text-gray-600';
+                                            default: return 'bg-gray-100 text-gray-800';
+                                          }
+                                        }
+
+                                        return (
+                                          <tr key={idx} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                              <div className="text-sm font-medium text-gray-900">{gap.skill_name}</div>
+                                              <div className="text-xs text-gray-500 mt-0.5">{gap.skill_category || 'N/A'}</div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getSourceBadge(gap.requirement_source)}`}>
+                                                {gap.requirement_source}
+                                              </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                              {gap.current_rating_text ? (
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRatingColor(gap.current_rating_text)}`}>
+                                                  {gap.current_rating_text} {gap.current_rating_number ? `(${gap.current_rating_number})` : ''}
+                                                </span>
+                                              ) : (
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                                  Missing
+                                                </span>
+                                              )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRatingColor(gap.required_rating_text)}`}>
+                                                {gap.required_rating_text} ({gap.required_rating_number})
+                                              </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getGapColor(gap.gap)}`}>
+                                                {gap.gap > 0 ? '+' : ''}{gap.gap}
+                                              </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 w-fit">
+                                                Below
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="px-6 py-8 text-center text-sm text-gray-500">
+                                  No skill gaps found for this employee.
+                                </div>
+                              )
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  ))}
-                  </div>
-                  
-                  {/* Pagination Controls */}
-                  {totalPages > 1 && (
-                    <div className="mt-6 flex justify-center items-center gap-2">
-                      <button
-                        onClick={() => setSkillGapPage((p) => Math.max(1, p - 1))}
-                        disabled={skillGapPage <= 1}
-                        className="px-4 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Previous
-                      </button>
-                      <div className="flex items-center gap-1">
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                          // Show first page, last page, current page, and pages around current
-                          if (
-                            page === 1 ||
-                            page === totalPages ||
-                            (page >= skillGapPage - 1 && page <= skillGapPage + 1)
-                          ) {
-                            return (
-                              <button
-                                key={page}
-                                onClick={() => setSkillGapPage(page)}
-                                className={`px-3 py-2 rounded-lg text-sm font-medium ${
-                                  skillGapPage === page
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                                }`}
-                              >
-                                {page}
-                              </button>
-                            );
-                          } else if (
-                            page === skillGapPage - 2 ||
-                            page === skillGapPage + 2
-                          ) {
-                            return (
-                              <span key={page} className="px-2 text-gray-500">
-                                ...
-                              </span>
-                            );
-                          }
-                          return null;
-                        })}
+
+                  {/* Section 2: Employees WITHOUT Gaps */}
+                  <div>
+                    <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-lg font-bold text-green-800">Employees WITHOUT Skill Gaps</h3>
+                          <p className="text-sm text-green-700 mt-1">
+                            {employeesWithoutGaps.length} employee(s) meet all requirements
+                          </p>
+                        </div>
+                        <div className="text-3xl font-bold text-green-600">{employeesWithoutGaps.length}</div>
                       </div>
-                      <button
-                        onClick={() => setSkillGapPage((p) => Math.min(totalPages, p + 1))}
-                        disabled={skillGapPage >= totalPages}
-                        className="px-4 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Next
-                      </button>
                     </div>
-                  )}
+
+                    {employeesWithoutGaps.length === 0 ? (
+                      <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+                        <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <p className="text-lg font-medium text-gray-900">No employees without gaps yet</p>
+                        <p className="text-sm text-gray-500 mt-1">Employees who meet all requirements will appear here.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {employeesWithoutGaps.map((analysis) => (
+                          <div
+                            key={analysis.employee_id}
+                            className="bg-white rounded-lg shadow-md border-l-4 border-green-500 overflow-hidden"
+                          >
+                            <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-4">
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <h3 className="text-lg font-semibold text-gray-900">{analysis.employee_name}</h3>
+                                  <p className="text-sm text-gray-600">Employee ID: {analysis.employee_id}</p>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <div className="text-center">
+                                    <div className="text-xs text-gray-500 mb-1">Band</div>
+                                    <div className="text-2xl font-bold text-indigo-600">{analysis.band}</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-xs text-gray-500 mb-1">Avg Rating</div>
+                                    <div className="text-lg font-semibold text-gray-900">{analysis.average_rating.toFixed(2)}</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-xs text-gray-500 mb-1">Total Skills</div>
+                                    <div className="text-lg font-semibold text-gray-900">{analysis.total_skills}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <svg className="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-4 flex gap-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="inline-block w-3 h-3 rounded-full bg-green-500"></span>
+                                  <span className="text-sm text-gray-700">Above: {analysis.skills_above_requirement}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="inline-block w-3 h-3 rounded-full bg-gray-400"></span>
+                                  <span className="text-sm text-gray-700">At: {analysis.skills_at_requirement}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="inline-block w-3 h-3 rounded-full bg-gray-300"></span>
+                                  <span className="text-sm text-gray-700">Below: 0</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </>
               );
             })()}
@@ -1834,18 +1911,18 @@ export const AdminDashboard: React.FC = () => {
                 onChange={(e) => { setImprPerPage(Number(e.target.value)); setImprPage(1); }}
                 className="px-2 py-1 border border-gray-300 rounded-lg bg-white text-sm"
               >
-                {[5,10,20,50,100].map(n => <option key={n} value={n}>{n}</option>)}
+                {[5, 10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
             {loading ? (
               <div className="text-center py-8 text-gray-500">Loading improvements...</div>
             ) : (
               <div className="bg-white rounded-lg shadow overflow-hidden">
-              <div className="p-4 bg-blue-50 border-b border-blue-200">
-                <p className="text-sm text-blue-800">
-                  Showing only skills where employees have improved (current rating &gt; initial rating). Skills are tracked from their first rating.
-                </p>
-              </div>
+                <div className="p-4 bg-blue-50 border-b border-blue-200">
+                  <p className="text-sm text-blue-800">
+                    Showing only skills where employees have improved (current rating &gt; initial rating). Skills are tracked from their first rating.
+                  </p>
+                </div>
                 {(() => {
                   const grouped: Array<{ employee_id: string; employee_name: string; items: SkillImprovement[] }> = [];
                   const byId: Record<string, number> = {};
@@ -1968,6 +2045,122 @@ export const AdminDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Courses Management Tab */}
+        {activeTab === 'courses' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">Course Management</h2>
+                <p className="text-sm text-gray-600">Create and manage learning courses, link them to skills, and assign them to employees.</p>
+              </div>
+              <button
+                onClick={handleCreateCourse}
+                className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                </svg>
+                Create Course
+              </button>
+            </div>
+
+            {loadingCourses ? (
+              <div className="text-center py-12 text-gray-500">Loading courses...</div>
+            ) : courses.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-lg shadow border border-gray-200">
+                <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                <h3 className="text-lg font-medium text-gray-900 mb-1">No courses found</h3>
+                <p className="text-gray-500 mb-4">Get started by creating your first course.</p>
+                <button
+                  onClick={handleCreateCourse}
+                  className="text-yellow-600 hover:text-yellow-800 font-medium"
+                >
+                  Create a new course
+                </button>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course Title</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Linked Skill</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Access</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {courses.map((course) => (
+                      <tr key={course.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-medium text-gray-900">{course.title}</div>
+                          {course.description && <div className="text-sm text-gray-500 mt-1">{course.description}</div>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {course.skill_name ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              {course.skill_name}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-400">No skill linked</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          {course.is_mandatory ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              Mandatory
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Optional
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          {course.external_url ? (
+                            <a
+                              href={course.external_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center justify-center gap-1"
+                            >
+                              External Link
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                            </a>
+                          ) : (
+                            <span className="text-sm text-gray-500">Internal</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              onClick={() => handleOpenAssignModal(course)}
+                              className="text-blue-600 hover:text-blue-900 font-medium"
+                            >
+                              Assign
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCourse(course.id)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Add Skill Category Modal */}
         {showAddSkillCategoryModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1992,7 +2185,7 @@ export const AdminDashboard: React.FC = () => {
                   </button>
                 </div>
               </div>
-              
+
               {/* Body */}
               <div className="p-6">
                 {uploadError && (
@@ -2015,7 +2208,7 @@ export const AdminDashboard: React.FC = () => {
                   This will create a new skill category that can be used to organize skills.
                 </p>
               </div>
-              
+
               {/* Footer */}
               <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
                 <button
@@ -2056,86 +2249,223 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         {/* Add Skill Modal */}
-        {showAddSkillModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-              {/* Header */}
-              <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold text-white">Add Skill</h2>
-                    <p className="text-green-100 text-sm mt-1">Add a new skill to "{addSkillForCategory}"</p>
+        {(() => {
+          console.log('Rendering Add Skill Modal - showAddSkillModal:', showAddSkillModal);
+          return showAddSkillModal;
+        })() && (
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  setShowAddSkillModal(false);
+                  setNewSkillName('');
+                }
+              }}
+            >
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold text-white">Add Skill</h2>
+                      <p className="text-green-100 text-sm mt-1">Add a new skill to "{addSkillForCategory}"</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowAddSkillModal(false);
+                        setNewSkillName('');
+                      }}
+                      className="text-white/80 hover:text-white transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
+                </div>
+
+                {/* Body */}
+                <div className="p-6">
+                  {uploadError && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-800">{uploadError}</p>
+                    </div>
+                  )}
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Skill Name</label>
+                  <input
+                    type="text"
+                    value={newSkillName}
+                    onChange={(e) => setNewSkillName(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSaveSkill()}
+                    placeholder="e.g., Python, Project Management"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                    autoFocus
+                    disabled={savingSkill}
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    This skill will be added to the "{addSkillForCategory}" category.
+                  </p>
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
                   <button
                     onClick={() => {
                       setShowAddSkillModal(false);
                       setNewSkillName('');
                     }}
+                    disabled={savingSkill}
+                    className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveSkill}
+                    disabled={!newSkillName.trim() || savingSkill}
+                    className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {savingSkill ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Save
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        {/* Bulk Assignment Modal */}
+        {showAssignModal && assignCourse && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-4 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-white">Assign Course</h2>
+                    <p className="text-blue-100 text-sm mt-1">Assign "{assignCourse.title}" to employees</p>
+                  </div>
+                  <button
+                    onClick={() => setShowAssignModal(false)}
                     className="text-white/80 hover:text-white transition-colors"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
               </div>
-              
-              {/* Body */}
-              <div className="p-6">
-                {uploadError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-red-800">{uploadError}</p>
+
+              <div className="p-4 border-b border-gray-200 flex-shrink-0 space-y-3">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search employees by name or ID..."
+                    value={assignmentSearchQuery}
+                    onChange={(e) => setAssignmentSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <svg className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">
+                    {selectedEmployeeIds.length} employee{selectedEmployeeIds.length !== 1 ? 's' : ''} selected
+                  </span>
+                  <button
+                    onClick={handleSelectAllFilteredEmployees}
+                    type="button"
+                    className="text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    {(() => {
+                      const filtered = employees.filter(e =>
+                        e.name.toLowerCase().includes(assignmentSearchQuery.toLowerCase()) ||
+                        e.employee_id.toLowerCase().includes(assignmentSearchQuery.toLowerCase())
+                      );
+                      const allFilteredSelected = filtered.length > 0 && filtered.every(e => selectedEmployeeIds.includes(e.id));
+                      return allFilteredSelected ? 'Deselect All' : 'Select All Filtered';
+                    })()}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-2">
+                {employees.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">Loading employees...</div>
+                ) : (
+                  <div className="space-y-1">
+                    {employees
+                      .filter(e =>
+                        e.name.toLowerCase().includes(assignmentSearchQuery.toLowerCase()) ||
+                        e.employee_id.toLowerCase().includes(assignmentSearchQuery.toLowerCase())
+                      )
+                      .map(employee => (
+                        <div
+                          key={employee.id}
+                          onClick={() => toggleEmployeeSelection(employee.id)}
+                          className={`flex items-center p-3 rounded-lg cursor-pointer border transition-colors ${selectedEmployeeIds.includes(employee.id)
+                            ? 'bg-blue-50 border-blue-200'
+                            : 'hover:bg-gray-50 border-transparent'
+                            }`}
+                        >
+                          <div className="flex-shrink-0 mr-3">
+                            <div className={`w-5 h-5 rounded border flex items-center justify-center ${selectedEmployeeIds.includes(employee.id)
+                              ? 'bg-blue-600 border-blue-600'
+                              : 'border-gray-300 bg-white'
+                              }`}>
+                              {selectedEmployeeIds.includes(employee.id) && (
+                                <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900">{employee.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {employee.employee_id} • {employee.department || 'No Dept'} • {employee.role || 'No Role'}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    {employees.filter(e =>
+                      e.name.toLowerCase().includes(assignmentSearchQuery.toLowerCase()) ||
+                      e.employee_id.toLowerCase().includes(assignmentSearchQuery.toLowerCase())
+                    ).length === 0 && (
+                        <div className="text-center py-8 text-gray-500">
+                          No employees found matching "{assignmentSearchQuery}"
+                        </div>
+                      )}
                   </div>
                 )}
-                <label className="block text-sm font-medium text-gray-700 mb-2">Skill Name</label>
-                <input
-                  type="text"
-                  value={newSkillName}
-                  onChange={(e) => setNewSkillName(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSaveSkill()}
-                  placeholder="e.g., Python, Project Management"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
-                  autoFocus
-                  disabled={savingSkill}
-                />
-                <p className="text-xs text-gray-500 mt-2">
-                  This skill will be added to the "{addSkillForCategory}" category.
-                </p>
               </div>
-              
-              {/* Footer */}
-              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+
+              <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 flex-shrink-0">
                 <button
-                  onClick={() => {
-                    setShowAddSkillModal(false);
-                    setNewSkillName('');
-                  }}
-                  disabled={savingSkill}
-                  className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
+                  onClick={() => setShowAssignModal(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-white transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleSaveSkill}
-                  disabled={!newSkillName.trim() || savingSkill}
-                  className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  onClick={handleAssignCourse}
+                  disabled={selectedEmployeeIds.length === 0 || assigning}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {savingSkill ? (
-                    <>
-                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                      Save
-                    </>
-                  )}
+                  {assigning ? 'Assigning...' : `Assign to ${selectedEmployeeIds.length} Employees`}
                 </button>
               </div>
             </div>
@@ -2193,7 +2523,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 };
 

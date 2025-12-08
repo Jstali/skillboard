@@ -406,20 +406,24 @@ def get_skill_improvements(
 ):
     """
     Get skill improvements - employees who have upgraded their skill ratings.
-    Only shows skills where current_rating > initial_rating (actual improvements).
+    Includes both manual skill entries and template submissions.
+    Shows skills where current_rating > initial_rating (actual improvements).
     """
-    from app.db.models import RatingEnum
+    from app.db.models import RatingEnum, EmployeeTemplateResponse, TemplateAssignment
+    from sqlalchemy import func, and_
     
     # Rating order for comparison: Beginner < Developing < Intermediate < Advanced < Expert
     rating_order = {
-        RatingEnum.BEGINNER: 1,
-        RatingEnum.DEVELOPING: 2,
-        RatingEnum.INTERMEDIATE: 3,
-        RatingEnum.ADVANCED: 4,
-        RatingEnum.EXPERT: 5,
+        "Beginner": 1,
+        "Developing": 2,
+        "Intermediate": 3,
+        "Advanced": 4,
+        "Expert": 5,
     }
     
-    # Get employees with their skill ratings
+    improvements = []
+    
+    # 1. Get improvements from manual skill entries (existing logic)
     query = (
         db.query(
             EmployeeModel.employee_id,
@@ -428,13 +432,12 @@ def get_skill_improvements(
             EmployeeSkillModel.rating,
             EmployeeSkillModel.initial_rating,
             EmployeeSkillModel.years_experience,
-            EmployeeSkillModel.is_interested,
         )
         .join(EmployeeSkillModel, EmployeeModel.id == EmployeeSkillModel.employee_id)
         .join(SkillModel, EmployeeSkillModel.skill_id == SkillModel.id)
-        .filter(EmployeeSkillModel.is_interested == False)  # Only existing skills have ratings
-        .filter(EmployeeSkillModel.rating.isnot(None))  # Only skills with ratings
-        .filter(EmployeeSkillModel.initial_rating.isnot(None))  # Must have initial rating to compare
+        .filter(EmployeeSkillModel.is_interested == False)
+        .filter(EmployeeSkillModel.rating.isnot(None))
+        .filter(EmployeeSkillModel.initial_rating.isnot(None))
     )
     
     if skill_id:
@@ -445,30 +448,125 @@ def get_skill_improvements(
     
     results = query.all()
     
-    improvements = []
     for row in results:
         current_rating = row.rating
         initial_rating = row.initial_rating
         
-        # Only include if current rating is higher than initial rating
         if current_rating and initial_rating:
-            current_order = rating_order.get(current_rating, 0)
-            initial_order = rating_order.get(initial_rating, 0)
+            current_order = rating_order.get(current_rating.value if hasattr(current_rating, 'value') else current_rating, 0)
+            initial_order = rating_order.get(initial_rating.value if hasattr(initial_rating, 'value') else initial_rating, 0)
             
             if current_order > initial_order:
                 improvements.append({
                     "employee_id": row.employee_id,
                     "employee_name": row.name,
                     "skill_name": row.skill_name,
-                    "initial_rating": initial_rating.value,
-                    "current_rating": current_rating.value,
+                    "initial_rating": initial_rating.value if hasattr(initial_rating, 'value') else initial_rating,
+                    "current_rating": current_rating.value if hasattr(current_rating, 'value') else current_rating,
                     "years_experience": row.years_experience,
+                    "source": "Manual Entry"
+                })
+    
+    # 2. Get improvements from template submissions
+    # Find employees with multiple template submissions for the same skill
+    # Compare first submission (baseline) vs latest submission (current)
+    
+    # Subquery to get first (earliest) submission per employee-skill
+    first_submission = (
+        db.query(
+            EmployeeTemplateResponse.skill_id,
+            TemplateAssignment.employee_id,
+            func.min(EmployeeTemplateResponse.created_at).label('first_date')
+        )
+        .join(TemplateAssignment, EmployeeTemplateResponse.assignment_id == TemplateAssignment.id)
+        .group_by(EmployeeTemplateResponse.skill_id, TemplateAssignment.employee_id)
+    ).subquery()
+    
+    # Subquery to get latest (most recent) submission per employee-skill
+    latest_submission = (
+        db.query(
+            EmployeeTemplateResponse.skill_id,
+            TemplateAssignment.employee_id,
+            func.max(EmployeeTemplateResponse.created_at).label('latest_date')
+        )
+        .join(TemplateAssignment, EmployeeTemplateResponse.assignment_id == TemplateAssignment.id)
+        .group_by(EmployeeTemplateResponse.skill_id, TemplateAssignment.employee_id)
+    ).subquery()
+    
+    # Get first submission details
+    first_details = (
+        db.query(
+            EmployeeModel.employee_id,
+            EmployeeModel.name.label('employee_name'),
+            SkillModel.name.label('skill_name'),
+            EmployeeTemplateResponse.employee_level.label('first_rating'),
+            EmployeeTemplateResponse.skill_id,
+            TemplateAssignment.employee_id.label('emp_id')
+        )
+        .join(TemplateAssignment, EmployeeTemplateResponse.assignment_id == TemplateAssignment.id)
+        .join(EmployeeModel, TemplateAssignment.employee_id == EmployeeModel.id)
+        .join(SkillModel, EmployeeTemplateResponse.skill_id == SkillModel.id)
+        .join(
+            first_submission,
+            and_(
+                EmployeeTemplateResponse.skill_id == first_submission.c.skill_id,
+                TemplateAssignment.employee_id == first_submission.c.employee_id,
+                EmployeeTemplateResponse.created_at == first_submission.c.first_date
+            )
+        )
+    ).subquery()
+    
+    # Get latest submission details and join with first submission
+    template_improvements = (
+        db.query(
+            first_details.c.employee_id,
+            first_details.c.employee_name,
+            first_details.c.skill_name,
+            first_details.c.first_rating,
+            EmployeeTemplateResponse.employee_level.label('latest_rating'),
+        )
+        .join(TemplateAssignment, EmployeeTemplateResponse.assignment_id == TemplateAssignment.id)
+        .join(
+            latest_submission,
+            and_(
+                EmployeeTemplateResponse.skill_id == latest_submission.c.skill_id,
+                TemplateAssignment.employee_id == latest_submission.c.employee_id,
+                EmployeeTemplateResponse.created_at == latest_submission.c.latest_date
+            )
+        )
+        .join(
+            first_details,
+            and_(
+                EmployeeTemplateResponse.skill_id == first_details.c.skill_id,
+                TemplateAssignment.employee_id == first_details.c.emp_id
+            )
+        )
+    ).all()
+    
+    for row in template_improvements:
+        first_rating = row.first_rating
+        latest_rating = row.latest_rating
+        
+        if first_rating and latest_rating:
+            first_order = rating_order.get(first_rating, 0)
+            latest_order = rating_order.get(latest_rating, 0)
+            
+            # Only include if there's actual improvement
+            if latest_order > first_order:
+                improvements.append({
+                    "employee_id": row.employee_id,
+                    "employee_name": row.employee_name,
+                    "skill_name": row.skill_name,
+                    "initial_rating": first_rating,
+                    "current_rating": latest_rating,
+                    "years_experience": None,
+                    "source": "Template Submission"
                 })
     
     return {
         "improvements": improvements,
         "total_count": len(improvements),
-        "note": "Showing only skills where employees have improved (current rating > initial rating)."
+        "note": "Showing skills where employees have improved (current rating > initial rating). Includes both manual entries and template submissions."
     }
 
 

@@ -162,6 +162,10 @@ def update_my_skill(
         db_employee_skill.is_interested = employee_skill.is_interested
     if employee_skill.notes is not None:
         db_employee_skill.notes = employee_skill.notes
+    if employee_skill.learning_status is not None:
+        db_employee_skill.learning_status = employee_skill.learning_status
+        from datetime import datetime
+        db_employee_skill.status_updated_at = datetime.utcnow()
 
     db.commit()
     db.refresh(db_employee_skill)
@@ -191,6 +195,10 @@ def update_employee_skill(
         db_employee_skill.is_interested = employee_skill.is_interested
     if employee_skill.notes is not None:
         db_employee_skill.notes = employee_skill.notes
+    if employee_skill.learning_status is not None:
+        db_employee_skill.learning_status = employee_skill.learning_status
+        from datetime import datetime
+        db_employee_skill.status_updated_at = datetime.utcnow()
 
     db.commit()
     db.refresh(db_employee_skill)

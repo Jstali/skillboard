@@ -316,6 +316,10 @@ def add_skill_to_pathway(
             is_required=True,
         )
         db.add(req)
+        
+    # Update skill category if provided and different
+    if category and skill.category != category:
+        skill.category = category
     
     db.commit()
     
@@ -435,46 +439,41 @@ def get_pathways_list(
 ):
     """Get list of all available pathways (employee categories) with skill counts."""
     # Get all distinct categories from CategorySkillTemplate
-    categories = (
-        db.query(CategorySkillTemplate.category)
-        .distinct()
-        .all()
-    )
+    template_categories = [c[0] for c in db.query(CategorySkillTemplate.category).distinct().all()]
+    
+    # Get all distinct categories from Skills
+    skill_categories_list = [c[0] for c in db.query(Skill.category).filter(Skill.category.isnot(None)).distinct().all()]
+    
+    # Combine and deduplicate
+    all_categories = sorted(list(set(template_categories + skill_categories_list)))
     
     result = []
-    for (category,) in categories:
-        # Count total skills in this pathway
+    for category in all_categories:
+        # Count total skills in this pathway (from skills table directly)
         total_skills = (
-            db.query(CategorySkillTemplate)
-            .filter(CategorySkillTemplate.category == category)
+            db.query(Skill)
+            .filter(Skill.category == category)
             .count()
         )
         
         # Count skills already in role requirements
         skills_in_requirements = (
             db.query(RoleRequirement.skill_id)
-            .join(CategorySkillTemplate, CategorySkillTemplate.skill_id == RoleRequirement.skill_id)
-            .filter(CategorySkillTemplate.category == category)
+            .join(Skill, Skill.id == RoleRequirement.skill_id)
+            .filter(Skill.category == category)
             .distinct()
             .count()
         )
         
-        # Get skill categories within this pathway
-        skill_categories = (
-            db.query(Skill.category)
-            .join(CategorySkillTemplate, CategorySkillTemplate.skill_id == Skill.id)
-            .filter(CategorySkillTemplate.category == category)
-            .filter(Skill.category.isnot(None))
-            .distinct()
-            .all()
-        )
+        # Get skill categories within this pathway (sub-categories? or just self if flattened)
+        # Assuming for now pathway = category, so sub-categories might be redundant or same
         
         result.append({
             "pathway": category,
             "total_skills": total_skills,
             "skills_in_requirements": skills_in_requirements,
             "skills_remaining": total_skills - skills_in_requirements,
-            "skill_categories": [cat[0] for cat in skill_categories if cat[0]],
+            "skill_categories": [category], # Currently pathway IS the category
         })
     
     return result

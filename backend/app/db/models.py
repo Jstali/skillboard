@@ -79,6 +79,8 @@ class EmployeeSkill(Base):
     match_score = Column(Float, nullable=True)  # For fuzzy matching during import
     needs_review = Column(Boolean, default=False, nullable=False)  # Flag for admin review
     is_custom = Column(Boolean, default=False, nullable=False)  # True if skill was added by user outside template
+    learning_status = Column(String, default="Not Started", nullable=False)  # Not Started, Learning, Stuck, Completed
+    status_updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
     employee = relationship("Employee", back_populates="employee_skills")
@@ -197,3 +199,88 @@ class CourseAssignment(Base):
         UniqueConstraint("employee_id", "course_id", name="uq_employee_course_assignment"),
     )
 
+
+class SkillTemplate(Base):
+    """Uploaded skill templates from spreadsheet files."""
+    __tablename__ = "skill_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    template_name = Column(String, nullable=False, index=True)  # Sheet name
+    file_name = Column(String, nullable=False)  # Original file name
+    content = Column(String, nullable=False)  # JSON string of array of rows/columns
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Relationship
+    uploader = relationship("User")
+
+
+class TemplateAssignment(Base):
+    """Assignment of a skill template to an employee."""
+    __tablename__ = "template_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(Integer, ForeignKey("skill_templates.id"), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    assigned_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assigned_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String, default="Pending", nullable=False)  # Pending, In Progress, Completed
+    category_hr = Column(String, nullable=True)  # Category selected by HR (hidden from employee)
+
+    # Relationships
+    template = relationship("SkillTemplate")
+    employee = relationship("Employee")
+    assigner = relationship("User")
+    responses = relationship("EmployeeTemplateResponse", back_populates="assignment", cascade="all, delete-orphan")
+    gap_results = relationship("SkillGapResult", back_populates="assignment", cascade="all, delete-orphan")
+
+    # Unique constraint: one assignment per employee-template pair
+    __table_args__ = (
+        UniqueConstraint("template_id", "employee_id", name="uq_template_employee_assignment"),
+    )
+
+
+class EmployeeTemplateResponse(Base):
+    """Employee responses to assigned skill templates."""
+    __tablename__ = "employee_template_responses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("template_assignments.id"), nullable=False)
+    employee_category = Column(String, nullable=False)  # Category selected by employee
+    skill_id = Column(Integer, ForeignKey("skills.id"), nullable=False)
+    employee_level = Column(String, nullable=True)  # Rating: Beginner, Developing, Intermediate, Advanced, Expert
+    years_experience = Column(Float, nullable=True)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    assignment = relationship("TemplateAssignment", back_populates="responses")
+    skill = relationship("Skill")
+
+    # Unique constraint: one response per assignment-skill pair
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "skill_id", name="uq_assignment_skill_response"),
+    )
+
+
+class SkillGapResult(Base):
+    """Calculated skill gap results for template assignments."""
+    __tablename__ = "skill_gap_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("template_assignments.id"), nullable=False)
+    skill_id = Column(Integer, ForeignKey("skills.id"), nullable=False)
+    required_level = Column(String, nullable=False)  # From template requirement
+    employee_level = Column(String, nullable=True)  # From employee response
+    gap_status = Column(String, nullable=False)  # "Gap", "Met", "Exceeded"
+    gap_value = Column(Integer, nullable=False)  # Numeric difference (-2, 0, +1, etc.)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    assignment = relationship("TemplateAssignment", back_populates="gap_results")
+    skill = relationship("Skill")
+
+    # Unique constraint: one gap result per assignment-skill pair
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "skill_id", name="uq_assignment_skill_gap"),
+    )

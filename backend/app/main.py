@@ -1,8 +1,9 @@
 """FastAPI main application."""
+# Trigger reload
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import database
-from app.api import skills, userskills, search, admin, auth, admin_users, admin_employee_skills, admin_dashboard, teams, bands, categories, admin_category_templates, learning, role_requirements
+from app.api import skills, userskills, search, admin, auth, admin_users, admin_employee_skills, admin_dashboard, teams, bands, categories, learning, role_requirements, templates, admin_template_assignments, employee_assignments, skill_gap_analysis
 
 app = FastAPI(
     title="Skillboard API",
@@ -31,9 +32,13 @@ app.include_router(admin_dashboard.router)
 app.include_router(teams.router)
 app.include_router(bands.router)
 app.include_router(categories.router)
-app.include_router(admin_category_templates.router)
+
 app.include_router(learning.router)
 app.include_router(role_requirements.router)
+app.include_router(templates.router)
+app.include_router(admin_template_assignments.router)
+app.include_router(employee_assignments.router)
+app.include_router(skill_gap_analysis.router)
 
 
 @app.on_event("startup")

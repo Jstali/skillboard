@@ -4,8 +4,9 @@ from sqlalchemy.orm import sessionmaker
 import os
 
 # Database URL from environment variable
+# Defaults to localhost for local development. Docker Compose will override this via env var.
 DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://skillboard:skillboard@postgres:5432/skillboard"
+    "DATABASE_URL", "postgresql://skillboard:skillboard@localhost:5432/skillboard"
 )
 
 engine = create_engine(DATABASE_URL)

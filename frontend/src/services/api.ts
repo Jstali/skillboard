@@ -6,8 +6,9 @@ import axios from 'axios';
 // In production or when proxy is not available, use full URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 30000, // 30 second timeout
   headers: {
     'Content-Type': 'application/json',
   },
@@ -58,22 +59,7 @@ export interface Employee {
   category?: string;
 }
 
-export interface EmployeeSkill {
-  id: number;
-  employee_id: number;
-  skill_id: number;
-  rating?: 'Beginner' | 'Developing' | 'Intermediate' | 'Advanced' | 'Expert' | null;  // Optional for interested skills
-  years_experience?: number;
-  is_interested?: boolean;
-  notes?: string;
-  is_custom?: boolean;
-  employee?: {
-    id: number;
-    employee_id: string;
-    name: string;
-  };
-  skill?: Skill;
-}
+
 
 export interface User {
   id: number;
@@ -180,6 +166,25 @@ export const authApi = {
 };
 
 // User Skills API
+export interface EmployeeSkill {
+  id: number;
+  employee_id: number;
+  skill_id: number;
+  rating: string | null; // e.g., "Intermediate"
+  years_experience: number | null;
+  is_interested: boolean;
+  notes?: string;
+  is_custom: boolean;
+  learning_status: string; // Not Started, Learning, Stuck, Completed
+  status_updated_at: string;
+  employee?: {
+    id: number;
+    employee_id: string;
+    name: string;
+  };
+  skill?: Skill; // Joined skill details
+}
+
 export const userSkillsApi = {
   getMyEmployee: async (): Promise<Employee> => {
     const response = await api.get<Employee>('/api/user-skills/me/employee');
@@ -221,6 +226,7 @@ export const userSkillsApi = {
     years_experience?: number;
     is_interested?: boolean;
     notes?: string;
+    learning_status?: string;
   }): Promise<EmployeeSkill> => {
     const response = await api.put<EmployeeSkill>(`/api/user-skills/me/${id}`, data);
     return response.data;
@@ -230,6 +236,7 @@ export const userSkillsApi = {
     years_experience?: number;
     is_interested?: boolean;
     notes?: string;
+    learning_status?: string;
   }): Promise<EmployeeSkill> => {
     const response = await api.put<EmployeeSkill>(`/api/user-skills/${id}`, data);
     return response.data;
@@ -350,6 +357,13 @@ export interface DashboardStats {
 }
 
 // Bands API
+export interface SuggestedCourse {
+  id: number;
+  title: string;
+  external_url?: string;
+  is_mandatory: boolean;
+}
+
 export interface SkillGap {
   skill_id: number;
   employee_skill_id: number;
@@ -362,6 +376,10 @@ export interface SkillGap {
   gap: number;
   is_required: boolean;
   notes?: string;
+  requirement_source: string;
+  learning_status: string;
+  pending_days: number;
+  suggested_courses?: SuggestedCourse[];
 }
 
 export interface BandAnalysis {
@@ -409,16 +427,20 @@ export const categoriesApi = {
 };
 
 export const bandsApi = {
-  getMyAnalysis: async (): Promise<BandAnalysis> => {
-    const response = await api.get<BandAnalysis>('/api/bands/me/analysis');
+  // Get band analysis for current user
+  getMyAnalysis: async (targetBand?: string): Promise<BandAnalysis> => {
+    const params = targetBand ? { target_band: targetBand } : {};
+    const response = await api.get<BandAnalysis>('/api/bands/me/analysis', { params });
     return response.data;
   },
   getAllEmployeesAnalysis: async (): Promise<BandAnalysis[]> => {
     const response = await api.get<BandAnalysis[]>('/api/bands/all/analysis');
     return response.data;
   },
-  getEmployeeAnalysis: async (employeeId: string): Promise<BandAnalysis> => {
-    const response = await api.get<BandAnalysis>(`/api/bands/employee/${employeeId}/analysis`);
+  // Get band analysis for a specific employee
+  getEmployeeAnalysis: async (employeeId: string, targetBand?: string): Promise<BandAnalysis> => {
+    const params = targetBand ? { target_band: targetBand } : {};
+    const response = await api.get<BandAnalysis>(`/api/bands/employee/${employeeId}/analysis`, { params });
     return response.data;
   },
 };
@@ -463,12 +485,12 @@ export const learningApi = {
     const response = await api.post<Course>('/api/learning/courses', course);
     return response.data;
   },
-  
+
   getAllCourses: async (): Promise<Course[]> => {
     const response = await api.get<Course[]>('/api/learning/courses');
     return response.data;
   },
-  
+
   assignCourse: async (assignment: {
     course_id: number;
     employee_ids: number[];
@@ -477,28 +499,28 @@ export const learningApi = {
     const response = await api.post('/api/learning/assignments', assignment);
     return response.data;
   },
-  
+
   getAllAssignments: async (): Promise<CourseAssignment[]> => {
     const response = await api.get<CourseAssignment[]>('/api/learning/assignments/all');
     return response.data;
   },
-  
+
   deleteCourse: async (courseId: number): Promise<{ message: string }> => {
     const response = await api.delete(`/api/learning/courses/${courseId}`);
     return response.data;
   },
-  
+
   // Employee endpoints
   getMyAssignments: async (): Promise<CourseAssignment[]> => {
     const response = await api.get<CourseAssignment[]>('/api/learning/my-assignments');
     return response.data;
   },
-  
+
   startCourse: async (assignmentId: number): Promise<{ message: string }> => {
     const response = await api.patch(`/api/learning/assignments/${assignmentId}/start`);
     return response.data;
   },
-  
+
   completeCourse: async (
     assignmentId: number,
     certificate?: File,
@@ -640,8 +662,10 @@ export const roleRequirementsApi = {
   },
 
   // Add a skill to pathways with default requirements
-  addSkillToPathway: async (skillId: number): Promise<{ message: string; skill_id: number; skill_name: string }> => {
-    const response = await api.post('/api/role-requirements/add-skill', null, { params: { skill_id: skillId } });
+  addSkillToPathway: async (skillId: number, category?: string): Promise<{ message: string; skill_id: number; skill_name: string }> => {
+    const params: any = { skill_id: skillId };
+    if (category) params.category = category;
+    const response = await api.post('/api/role-requirements/add-skill', null, { params });
     return response.data;
   },
 
@@ -704,7 +728,7 @@ export const adminDashboardApi = {
     const response = await api.get<DashboardStats>('/api/admin/dashboard/stats');
     return response.data;
   },
-  searchEmployeesBySkill: async (criteria: Array<{skill_name: string, rating?: string}>): Promise<{
+  searchEmployeesBySkill: async (criteria: Array<{ skill_name: string, rating?: string }>): Promise<{
     total_results: number;
     employees: Array<{
       employee: Employee;
@@ -723,6 +747,139 @@ export const adminDashboardApi = {
     }>;
   }> => {
     const response = await api.post('/api/admin/employees/search', { criteria });
+    return response.data;
+  },
+};
+
+
+// Templates API
+export interface SkillTemplate {
+  id: number;
+  template_name: string;
+  file_name: string;
+  created_at: string;
+  row_count?: number;
+  content?: string[][];
+}
+
+export interface TemplateUploadResponse {
+  message: string;
+  templates_created?: number;
+  template_names?: string[];
+  rows_processed?: number;
+  rows_created?: number;
+  rows_updated?: number;
+  errors?: string[];
+}
+
+export const templatesApi = {
+  upload: async (file: File, templateName?: string): Promise<TemplateUploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (templateName) {
+      formData.append('template_name', templateName);
+    }
+    const response = await api.post<TemplateUploadResponse>('/api/admin/templates/upload', formData);
+    return response.data;
+  },
+
+  getAll: async (): Promise<SkillTemplate[]> => {
+    const response = await api.get<SkillTemplate[]>('/api/admin/templates');
+    return response.data;
+  },
+
+  getById: async (id: number): Promise<SkillTemplate> => {
+    const response = await api.get<SkillTemplate>(`/api/admin/templates/${id}`);
+    return response.data;
+  },
+
+  update: async (id: number, content: any[][]): Promise<SkillTemplate> => {
+    const response = await api.put<SkillTemplate>(`/api/admin/templates/${id}`, { content });
+    return response.data;
+  },
+
+  rename: async (id: number, newName: string): Promise<SkillTemplate> => {
+    const response = await api.put<SkillTemplate>(`/api/admin/templates/${id}/rename`, { new_name: newName });
+    return response.data;
+  },
+
+  getDropdown: async (): Promise<{ id: number; name: string }[]> => {
+    const response = await api.get<{ id: number; name: string }[]>('/api/admin/templates/options/dropdown');
+    return response.data;
+  },
+
+  assign: async (templateId: number, employeeIds: number[], filters?: { department?: string, role?: string, team?: string }): Promise<{ message: string; errors: string[] }> => {
+    const response = await api.post<{ message: string; errors: string[] }>('/api/admin/templates/assign', {
+      template_id: templateId,
+      employee_ids: employeeIds,
+      ...filters
+    });
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<{ message: string }> => {
+    const response = await api.delete<{ message: string }>(`/api/admin/templates/${id}`);
+    return response.data;
+  },
+
+  getSample: async (): Promise<{ template_name: string; content: any[][] }[]> => {
+    const response = await api.get<{ template_name: string; content: any[][] }[]>('/api/admin/templates/sample');
+    return response.data;
+  },
+};
+
+// Employee Assignments API
+export interface AssignedTemplate {
+  id: number;
+  template_name: string;
+  assigned_at: string;
+  status: string; // "Pending", "In Progress", "Completed"
+}
+
+export interface TemplateSkill {
+  id: number;
+  name: string;
+  category?: string;
+  description?: string;
+}
+
+export interface AssignmentDetails {
+  id: number;
+  template: {
+    id: number;
+    name: string;
+    skills: TemplateSkill[];
+  };
+  status: string;
+  assigned_at: string;
+}
+
+export interface SkillResponseData {
+  skill_id: number;
+  level?: string; // Beginner, Developing, Intermediate, Advanced, Expert
+  years_experience?: number;
+  notes?: string;
+}
+
+export interface SubmitTemplateData {
+  employee_category: string;
+  responses: SkillResponseData[];
+}
+
+export const employeeAssignmentsApi = {
+  getMyAssignments: async (): Promise<AssignedTemplate[]> => {
+    const response = await api.get<{ pending: AssignedTemplate[]; completed: AssignedTemplate[] }>('/api/employee/assignments/my-assignments');
+    // Combine pending and completed into a single array
+    return [...(response.data.pending || []), ...(response.data.completed || [])];
+  },
+
+  getAssignmentDetails: async (assignmentId: number): Promise<AssignmentDetails> => {
+    const response = await api.get<AssignmentDetails>(`/api/employee/assignments/${assignmentId}`);
+    return response.data;
+  },
+
+  submitTemplate: async (assignmentId: number, data: SubmitTemplateData): Promise<{ message: string }> => {
+    const response = await api.post(`/api/employee/assignments/${assignmentId}/submit`, data);
     return response.data;
   },
 };

@@ -88,6 +88,13 @@ def calculate_employee_band(db: Session, employee_id: int) -> Optional[str]:
     return calculate_band(average_rating)
 
 
+class SuggestedCourse(BaseModel):
+    id: int
+    title: str
+    external_url: Optional[str]
+    is_mandatory: bool
+
+
 class SkillGap(BaseModel):
     skill_id: int
     employee_skill_id: int  # ID of the EmployeeSkill record for updating
@@ -97,9 +104,13 @@ class SkillGap(BaseModel):
     current_rating_number: Optional[int]
     required_rating_text: str
     required_rating_number: int
+    requirement_source: str # Template, Role, or Band Default
     gap: int  # current - required (positive = above requirement, negative = below requirement)
     is_required: bool
     notes: Optional[str]  # Improvement plan/notes
+    learning_status: str # Not Started, Learning, Stuck, Completed
+    pending_days: Optional[int] # Days since status update if not completed
+    suggested_courses: List[SuggestedCourse] = []
 
 
 class BandAnalysis(BaseModel):
@@ -116,6 +127,7 @@ class BandAnalysis(BaseModel):
 
 @router.get("/me/analysis", response_model=BandAnalysis)
 def get_my_band_analysis(
+    target_band: Optional[str] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(database.get_db),
 ):
@@ -127,12 +139,13 @@ def get_my_band_analysis(
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     
-    return get_employee_band_analysis(db, employee.id, employee.employee_id, employee.name)
+    return get_employee_band_analysis(db, employee.id, employee.employee_id, employee.name, target_band)
 
 
 @router.get("/employee/{employee_id}/analysis", response_model=BandAnalysis)
 def get_employee_band_analysis_endpoint(
     employee_id: str,
+    target_band: Optional[str] = None,
     db: Session = Depends(database.get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -145,7 +158,7 @@ def get_employee_band_analysis_endpoint(
     if not current_user.is_admin and current_user.employee_id != employee_id:
         raise HTTPException(status_code=403, detail="Not authorized to view this employee's data")
     
-    return get_employee_band_analysis(db, employee.id, employee.employee_id, employee.name)
+    return get_employee_band_analysis(db, employee.id, employee.employee_id, employee.name, target_band)
 
 
 @router.get("/all/analysis", response_model=List[BandAnalysis])
@@ -174,19 +187,25 @@ def get_all_employees_band_analysis(
     return analyses
 
 
+    # ... (existing imports, etc) ...
+
 def get_employee_band_analysis(
     db: Session,
     employee_db_id: int,
     employee_id: str,
-    employee_name: str
+    employee_name: str,
+    target_band: Optional[str] = None
 ) -> BandAnalysis:
     """Calculate band analysis for an employee."""
+    from app.db.models import TemplateAssignment, SkillTemplate
+    import json
+    
     # Get employee to get their predefined band from database
     employee = db.query(Employee).filter(Employee.id == employee_db_id).first()
     
     # Get all employee skills (existing skills only, with ratings)
     # EXCLUDE custom skills (is_custom=True) - they are not required for the role
-    employee_skills = (
+    employee_skills_query = (
         db.query(EmployeeSkill, Skill)
         .join(Skill, EmployeeSkill.skill_id == Skill.id)
         .filter(
@@ -198,24 +217,84 @@ def get_employee_band_analysis(
         .all()
     )
     
-    # Use band from database (predefined), default to "A" if not set
-    band = employee.band if employee and employee.band else "A"
+    # Map skill_id -> {emp_skill, skill_obj}
+    employee_skill_map = {}
+    for emp_skill, skill in employee_skills_query:
+        employee_skill_map[skill.id] = {"emp_skill": emp_skill, "skill": skill}
+
+    # Fetch ALL skills to map names to IDs for templates
+    all_skills = db.query(Skill).all()
+    skill_name_to_id = {s.name.lower(): s for s in all_skills}
+    skill_id_to_obj = {s.id: s for s in all_skills}
     
-    if not employee_skills:
-        # No skills - return default analysis
-        return BandAnalysis(
-            employee_id=employee_id,
-            employee_name=employee_name,
-            band=band,
-            average_rating=0.0,
-            total_skills=0,
-            skills_above_requirement=0,
-            skills_at_requirement=0,
-            skills_below_requirement=0,
-            skill_gaps=[],
-        )
+    # Use target_band if provided, otherwise use employee's band, else default to "A"
+    band = target_band if target_band else (employee.band if employee and employee.band else "A")
+
+    # --- 1. Fetch Assigned Templates & Parse Requirements ---
+    assigned_templates = (
+        db.query(SkillTemplate)
+        .join(TemplateAssignment, TemplateAssignment.template_id == SkillTemplate.id)
+        .filter(TemplateAssignment.employee_id == employee_db_id)
+        .all()
+    )
     
-    # Get role requirements for this band
+    # Map of Skill ID -> Required Rating (from Templates)
+    # Priority: Template Requirement > Role Requirement > Band Default
+    template_requirements = {} 
+    
+    for template in assigned_templates:
+        try:
+            content = json.loads(template.content)
+            if not content: continue
+            
+            # Simple header detection (assuming first row is header)
+            headers = [str(h).lower().strip() for h in content[0]]
+            
+            # Find column indices
+            skill_col_idx = -1
+            req_level_col_idx = -1
+            
+            for idx, header in enumerate(headers):
+                if 'skill' in header and 'category' not in header:
+                    skill_col_idx = idx
+                if 'required' in header or 'level' in header or 'rating' in header:
+                    req_level_col_idx = idx
+            
+            if skill_col_idx == -1 or req_level_col_idx == -1:
+                print(f"Skipping template {template.template_name}: Could not find Skill or Required Level columns.")
+                continue
+                
+            # Iterate rows
+            for row in content[1:]:
+                if len(row) <= max(skill_col_idx, req_level_col_idx): continue
+                
+                skill_name = str(row[skill_col_idx]).strip()
+                req_level_str = str(row[req_level_col_idx]).strip()
+                
+                if not skill_name or not req_level_str: continue
+                
+                # Normalize rating string to Enum
+                req_rating_enum = None
+                req_level_lower = req_level_str.lower()
+                
+                if 'beginner' in req_level_lower: req_rating_enum = RatingEnum.BEGINNER
+                elif 'developing' in req_level_lower: req_rating_enum = RatingEnum.DEVELOPING
+                elif 'intermediate' in req_level_lower: req_rating_enum = RatingEnum.INTERMEDIATE
+                elif 'advanced' in req_level_lower: req_rating_enum = RatingEnum.ADVANCED
+                elif 'expert' in req_level_lower: req_rating_enum = RatingEnum.EXPERT
+                
+                if req_rating_enum:
+                     # Find Skill ID from Name
+                     if skill_name.lower() in skill_name_to_id:
+                         skill_obj = skill_name_to_id[skill_name.lower()]
+                         template_requirements[skill_obj.id] = req_rating_enum
+                     else:
+                         print(f"Warning: Template skill '{skill_name}' not found in database.")
+                             
+        except Exception as e:
+            print(f"Error parsing template {template.template_name}: {e}")
+
+    # --- 2. Role Requirements (Database) ---
     role_requirements = (
         db.query(RoleRequirement, Skill)
         .join(Skill, RoleRequirement.skill_id == Skill.id)
@@ -224,68 +303,132 @@ def get_employee_band_analysis(
     )
     
     # Create a map of skill_id -> requirement
-    requirement_map = {
-        req.skill_id: req for req, _ in role_requirements
+    role_req_map = {
+        req.skill_id: req.required_rating for req, _ in role_requirements
     }
     
-    # Build skill gaps
+    # --- 3. Build Gaps (Union of Employee Skills + Required Skills) ---
+    all_relevant_skill_ids = set(employee_skill_map.keys()) | set(template_requirements.keys()) | set(role_req_map.keys())
+    
     skill_gaps = []
     skills_above = 0
     skills_at = 0
     skills_below = 0
     
-    for emp_skill, skill in employee_skills:
-        current_rating_num = RATING_TO_NUMBER[emp_skill.rating] if emp_skill.rating else None
-        current_rating_text = emp_skill.rating.value if emp_skill.rating else None
+    from datetime import datetime
+    
+    for skill_id in all_relevant_skill_ids:
+        skill_obj = skill_id_to_obj.get(skill_id)
+        if not skill_obj: continue # Should not happen given logic above
+
+        # Determine Employee's Current Rating
+        current_rating_enum = None
+        current_rating_num = 0 # Default to 0 for missing skills
+        current_rating_text = "Not Rated"
+        emp_skill_id = 0 # Dummy ID if missing
+        notes = None
+        learning_status = "Not Started"
+        status_updated_at = None
         
-        # Check if there's a requirement for this skill
-        requirement = requirement_map.get(skill.id)
-        if requirement:
-            required_rating_num = RATING_TO_NUMBER[requirement.required_rating]
-            required_rating_text = requirement.required_rating.value
-            gap = (current_rating_num or 0) - required_rating_num
+        if skill_id in employee_skill_map:
+            emp_data = employee_skill_map[skill_id]
+            emp_skill = emp_data["emp_skill"]
             
-            if gap > 0:
-                skills_above += 1
-            elif gap == 0:
-                skills_at += 1
-            else:
-                skills_below += 1
+            if emp_skill.rating:
+                current_rating_enum = emp_skill.rating
+                current_rating_num = RATING_TO_NUMBER[emp_skill.rating]
+                current_rating_text = emp_skill.rating.value
+            
+            emp_skill_id = emp_skill.id
+            notes = emp_skill.notes
+            learning_status = emp_skill.learning_status or "Not Started"
+            status_updated_at = emp_skill.status_updated_at
+        
+        # Determine Required Rating
+        required_rating = None
+        source = "Default"
+        
+        # Priority 1: Template
+        if skill_id in template_requirements:
+            required_rating = template_requirements[skill_id]
+            source = "Template"
+        # Priority 2: Role Requirement
+        elif skill_id in role_req_map:
+            required_rating = role_req_map[skill_id]
+            source = "Role"
+        # Priority 3: Band Default (Only if the employee has the skill, OR if we want to enforce defaults on everything? 
+        # Usually defaults only apply if we have a reason to grade it. 
+        # But for gap analysis, if it's not in Template or Role, and Employee has it, we compare against default.)
+        elif skill_id in employee_skill_map:
+             required_rating = BAND_DEFAULT_RATINGS.get(band, RatingEnum.INTERMEDIATE)
+             source = "Band Default"
         else:
-            # No requirement defined - use band's default requirement
-            # L1 defaults to Advanced (4), L2 defaults to Expert (5)
-            default_rating = BAND_DEFAULT_RATINGS.get(band, RatingEnum.INTERMEDIATE)
-            required_rating_num = RATING_TO_NUMBER[default_rating]
-            required_rating_text = default_rating.value
-            gap = (current_rating_num or 0) - required_rating_num
-            
-            if gap > 0:
-                skills_above += 1
-            elif gap == 0:
-                skills_at += 1
-            else:
-                skills_below += 1
+            # Skill is not in Template, not in Role, and not in Employee Profile.
+            # This shouldn't happen because we iterate over the union. 
+            # If it's in the union set but not in map or reqs, it must be in employee map, covered above.
+            continue
+             
+        required_rating_num = RATING_TO_NUMBER[required_rating]
+        required_rating_text = required_rating.value
         
+        gap = current_rating_num - required_rating_num
+        
+        if gap > 0:
+            skills_above += 1
+        elif gap == 0:
+            skills_at += 1
+        else:
+            skills_below += 1
+        
+        # Calculate pending days
+        pending_days = 0
+        if learning_status in ["Learning", "Stuck"] and status_updated_at:
+            delta = datetime.utcnow() - status_updated_at
+            pending_days = delta.days
+
+        # Fetch suggested courses
+        from app.db.models import Course 
+        courses = db.query(Course).filter(Course.skill_id == skill_id).all()
+        suggested_courses = [
+            SuggestedCourse(
+                id=c.id, 
+                title=c.title, 
+                external_url=c.external_url, 
+                is_mandatory=c.is_mandatory
+            ) for c in courses
+        ]
+
         skill_gaps.append(SkillGap(
-            skill_id=skill.id,
-            employee_skill_id=emp_skill.id,
-            skill_name=skill.name,
-            skill_category=skill.category,
+            skill_id=skill_id,
+            employee_skill_id=emp_skill_id,
+            skill_name=skill_obj.name,
+            skill_category=skill_obj.category,
             current_rating_text=current_rating_text,
             current_rating_number=current_rating_num,
             required_rating_text=required_rating_text,
             required_rating_number=required_rating_num,
             gap=gap,
-            is_required=requirement.is_required if requirement else True,
-            notes=emp_skill.notes,
+            is_required=True, # Simplified for now
+            requirement_source=source,
+            notes=notes,
+            learning_status=learning_status,
+            pending_days=pending_days,
+            suggested_courses=suggested_courses,
         ))
     
+    total_skills_count = len(skill_gaps) # Total tracked skills for this band/role/template
+    
+    # Calculate average rating only for skills the employee HAS
+    if len(employee_skill_map) > 0:
+         # This part is a bit tricky if we want "Band Average" - usually strictly based on held skills
+         pass 
+
     return BandAnalysis(
         employee_id=employee_id,
         employee_name=employee_name,
         band=band,
         average_rating=0.0,  # No longer calculated - band comes from database
-        total_skills=len(employee_skills),
+        total_skills=total_skills_count,
         skills_above_requirement=skills_above,
         skills_at_requirement=skills_at,
         skills_below_requirement=skills_below,
