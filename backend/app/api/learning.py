@@ -235,37 +235,67 @@ def get_my_assignments(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get courses assigned to current user."""
+    print(f"=== get_my_assignments called for user: {current_user.email} ===")
+    
     if not current_user.employee_id:
+        print(f"ERROR: User {current_user.email} has no employee_id")
         raise HTTPException(status_code=400, detail="User is not linked to an employee")
     
+    print(f"Looking for employee with employee_id: {current_user.employee_id}")
     employee = db.query(Employee).filter(Employee.employee_id == current_user.employee_id).first()
     if not employee:
+        print(f"ERROR: No employee found with employee_id: {current_user.employee_id}")
         raise HTTPException(status_code=404, detail="Employee not found")
+    
+    print(f"Found employee: {employee.name} (id={employee.id})")
     
     assignments = db.query(CourseAssignment).filter(
         CourseAssignment.employee_id == employee.id
     ).all()
     
-    result = []
-    for assignment in assignments:
-        course = db.query(Course).filter(Course.id == assignment.course_id).first()
-        
-        result.append(CourseAssignmentResponse(
-            id=assignment.id,
-            course_id=assignment.course_id,
-            course_title=course.title if course else "Unknown",
-            course_external_url=course.external_url if course else None,
-            employee_id=assignment.employee_id,
-            employee_name=employee.name,
-            assigned_at=assignment.assigned_at,
-            due_date=assignment.due_date,
-            status=assignment.status.value,
-            started_at=assignment.started_at,
-            completed_at=assignment.completed_at,
-            certificate_url=assignment.certificate_url,
-            notes=assignment.notes,
-        ))
+    print(f"Found {len(assignments)} assignments for employee {employee.id}")
     
+    result = []
+    for i, assignment in enumerate(assignments):
+        try:
+            print(f"Processing assignment {i+1}/{len(assignments)}: id={assignment.id}, course_id={assignment.course_id}, status={assignment.status}, status_type={type(assignment.status)}")
+            
+            course = db.query(Course).filter(Course.id == assignment.course_id).first()
+            
+            # Handle status - it might be a string or an enum
+            status_value = assignment.status
+            if hasattr(status_value, 'value'):
+                status_str = status_value.value
+            else:
+                status_str = str(status_value)
+            
+            print(f"Status converted to: {status_str}")
+            
+            result.append(CourseAssignmentResponse(
+                id=assignment.id,
+                course_id=assignment.course_id,
+                course_title=course.title if course else "Unknown",
+                course_external_url=course.external_url if course else None,
+                employee_id=assignment.employee_id,
+                employee_name=employee.name,
+                assigned_at=assignment.assigned_at,
+                due_date=assignment.due_date,
+                status=status_str,
+                started_at=assignment.started_at,
+                completed_at=assignment.completed_at,
+                certificate_url=assignment.certificate_url,
+                notes=assignment.notes,
+            ))
+            print(f"Successfully processed assignment {assignment.id}")
+        except Exception as e:
+            print(f"ERROR processing assignment {assignment.id}: {str(e)}")
+            print(f"Exception type: {type(e)}")
+            import traceback
+            traceback.print_exc()
+            # Skip this assignment and continue
+            continue
+    
+    print(f"Returning {len(result)} assignments")
     return result
 
 

@@ -210,23 +210,44 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const handleAssignCourse = async () => {
-    if (!assignCourse || selectedEmployeeIds.length === 0) return;
+    console.log('=== handleAssignCourse called ===');
+    console.log('assignCourse:', assignCourse);
+    console.log('selectedEmployeeIds:', selectedEmployeeIds);
+
+    if (!assignCourse || selectedEmployeeIds.length === 0) {
+      console.log('Early return: missing course or no employees selected');
+      return;
+    }
 
     setAssigning(true);
     try {
-      await learningApi.assignCourse({
+      console.log('Making API call to assign course...');
+      const response = await learningApi.assignCourse({
         course_id: assignCourse.id,
         employee_ids: selectedEmployeeIds
       });
-      alert(`Successfully assigned "${assignCourse.title}" to ${selectedEmployeeIds.length} employees.`);
+      console.log('API response:', response);
+
+      alert(`Successfully assigned "${assignCourse.title}" to ${response.assigned} employees. ${response.skipped > 0 ? `Skipped ${response.skipped} (already assigned or not found).` : ''}`);
       setShowAssignModal(false);
-    } catch (error) {
-      console.error("Failed to assign course:", error);
-      alert("Failed to assign course. Please try again.");
+      setSelectedEmployeeIds([]);
+
+      // Reload courses to refresh assignment counts if needed
+      await loadCourses();
+    } catch (error: any) {
+      console.error('=== Assignment Error ===');
+      console.error('Error object:', error);
+      console.error('Error response:', error.response);
+      console.error('Error message:', error.message);
+
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to assign course. Please try again.';
+      alert(`Error: ${errorMsg}`);
     } finally {
       setAssigning(false);
+      console.log('=== handleAssignCourse completed ===');
     }
   };
+
 
   const toggleEmployeeSelection = (employeeId: number) => {
     setSelectedEmployeeIds(prev =>
@@ -2715,6 +2736,103 @@ export const AdminDashboard: React.FC = () => {
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create Course Modal */}
+        {showCourseModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h2 className="text-xl font-bold mb-4">Create New Course</h2>
+
+              <form onSubmit={handleSaveCourse} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Course Title *</label>
+                  <input
+                    type="text"
+                    value={currentCourse.title || ''}
+                    onChange={(e) => setCurrentCourse({ ...currentCourse, title: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., AWS Certification"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                  <textarea
+                    value={currentCourse.description || ''}
+                    onChange={(e) => setCurrentCourse({ ...currentCourse, description: e.target.value })}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Course description..."
+                  />
+                </div>
+
+                <div className="hidden">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Map to Skill (for auto-assignment)</label>
+                  <select
+                    value={currentCourse.skill_id || ''}
+                    onChange={(e) => setCurrentCourse({ ...currentCourse, skill_id: e.target.value ? Number(e.target.value) : undefined })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">-- No Skill Mapping --</option>
+                    {allSimpleSkills.map((skill) => (
+                      <option key={skill.id} value={skill.id}>
+                        {skill.name} {skill.category ? `(${skill.category})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Mapping a course to a skill enables automatic assignment based on skill gaps
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">External Learning Platform URL</label>
+                  <input
+                    type="url"
+                    value={currentCourse.external_url || ''}
+                    onChange={(e) => setCurrentCourse({ ...currentCourse, external_url: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="https://learning-platform.com/course"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="mandatory"
+                    checked={currentCourse.is_mandatory || false}
+                    onChange={(e) => setCurrentCourse({ ...currentCourse, is_mandatory: e.target.checked })}
+                    className="w-4 h-4 text-red-600 rounded focus:ring-2 focus:ring-red-500"
+                  />
+                  <label htmlFor="mandatory" className="text-sm font-medium text-gray-700">
+                    Mark as Mandatory
+                  </label>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="submit"
+                    disabled={!currentCourse.title || savingCourse}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {savingCourse ? 'Creating...' : 'Create'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCourseModal(false);
+                      setCurrentCourse({});
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
