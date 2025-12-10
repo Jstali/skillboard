@@ -131,7 +131,27 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
             console.error('Error response:', error.response);
             console.error('Error message:', error.message);
 
-            const errorMessage = error.response?.data?.detail || error.message || 'Failed to upload file';
+            // Handle FastAPI validation errors (422 responses)
+            let errorMessage = 'Failed to upload file';
+
+            if (error.response?.data?.detail) {
+                const detail = error.response.data.detail;
+
+                // Check if detail is an array of validation errors
+                if (Array.isArray(detail)) {
+                    // Format validation errors: extract 'msg' from each error object
+                    errorMessage = detail.map((err: any) => err.msg || JSON.stringify(err)).join(', ');
+                } else if (typeof detail === 'string') {
+                    // Detail is already a string
+                    errorMessage = detail;
+                } else if (typeof detail === 'object') {
+                    // Detail is an object, try to extract msg or stringify it
+                    errorMessage = detail.msg || JSON.stringify(detail);
+                }
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+
             onUploadError?.(errorMessage);
 
             // Close modal on error to allow user to restart (especially if file invalid)
@@ -615,8 +635,14 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
 
                                     if (categoryIndex !== -1) {
                                         // Column-based grouping (Legacy/Explicit)
+                                        // Don't skip rows with a category set, even if mostly empty (for newly added skills)
                                         editingContent.slice(headerRowIndex + 1).forEach((row, index) => {
                                             const category = row[categoryIndex] || 'Uncategorized';
+                                            // Only skip rows that are COMPLETELY empty (no category either)
+                                            const isCompletelyEmpty = !row.some(cell => cell && cell.toString().trim() !== '');
+                                            if (isCompletelyEmpty && !row[categoryIndex]) {
+                                                return; // Skip truly empty rows
+                                            }
                                             if (!groupedRows[category]) {
                                                 groupedRows[category] = [];
                                             }
@@ -680,8 +706,14 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
                                                 return; // Skip adding the header row itself as a skill
                                             }
 
-                                            // Skip empty rows
-                                            if (!row.some(cell => cell && cell.toString().trim() !== '')) return;
+                                            // Skip ONLY section header rows (empty rows are kept for newly added skills)
+                                            // A row is considered "newly added" if it's mostly empty but in the content
+                                            // Don't skip completely - let them appear as editable rows
+                                            const isEmpty = !row.some(cell => cell && cell.toString().trim() !== '');
+                                            // Skip empty rows ONLY if they haven't been intentionally added
+                                            // We can't tell for sure, so let's not skip any non-header rows
+                                            // Comment this out to allow new empty rows to show:
+                                            // if (isEmpty) return;
 
                                             if (!tempGroups[currentSection]) {
                                                 tempGroups[currentSection] = [];
@@ -778,10 +810,85 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            // Add a new row with this category pre-filled
+
+                                                            console.log('=== ADD SKILL CLICKED ===');
+                                                            console.log('Category:', category);
+                                                            console.log('Rows in category:', rows.length);
+                                                            console.log('Headers:', headers);
+                                                            console.log('Category index:', categoryIndex);
+
+                                                            // Find the last row index for this category
+                                                            const lastRowInCategory = rows[rows.length - 1];
+                                                            if (!lastRowInCategory) {
+                                                                console.error('No rows found in category');
+                                                                return;
+                                                            }
+
+                                                            const insertIndex = lastRowInCategory.originalIndex + 1;
+                                                            console.log('Last row in category:', lastRowInCategory);
+                                                            console.log('Insert index:', insertIndex);
+                                                            console.log('Current editingContent length:', editingContent.length);
+
+                                                            // Create a new row with empty values
                                                             const newRow = new Array(headers.length).fill('');
-                                                            if (categoryIndex !== -1) newRow[categoryIndex] = category;
-                                                            setEditingContent([...editingContent, newRow]);
+                                                            console.log('New row created with length:', newRow.length);
+
+                                                            // Only set category if there's a category column (column-based grouping)
+                                                            if (categoryIndex !== -1) {
+                                                                newRow[categoryIndex] = category;
+                                                                console.log('Set category in column', categoryIndex);
+                                                            }
+                                                            // For row-based grouping, the new row will automatically be grouped
+                                                            // with the category it's inserted after
+
+                                                            // Insert the new row right after the last row of this category
+                                                            const newContent = [...editingContent];
+                                                            newContent.splice(insertIndex, 0, newRow);
+                                                            console.log('New editingContent length:', newContent.length);
+                                                            console.log('Row inserted at index:', insertIndex);
+                                                            console.log('New row content:', newRow);
+
+                                                            setEditingContent(newContent);
+                                                            console.log('=== setEditingContent called ===');
+
+                                                            // Automatically expand the category to show the new skill
+                                                            setTimeout(() => {
+                                                                const contentDiv = document.getElementById(`content-${category}`);
+                                                                if (contentDiv && contentDiv.classList.contains('hidden')) {
+                                                                    contentDiv.classList.remove('hidden');
+                                                                    // Also rotate the arrow icon
+                                                                    const parentDiv = contentDiv.previousElementSibling;
+                                                                    const arrow = parentDiv?.querySelector('svg');
+                                                                    if (arrow) {
+                                                                        arrow.classList.add('rotate-180');
+                                                                    }
+                                                                }
+
+
+                                                                // Scroll the new row into view with better visibility
+                                                                // Increase timeout to ensure React has re-rendered
+                                                                setTimeout(() => {
+                                                                    const categoryDiv = document.getElementById(`content-${category}`);
+                                                                    if (categoryDiv) {
+                                                                        const allRows = categoryDiv.querySelectorAll('tbody tr');
+                                                                        const lastRow = allRows[allRows.length - 1] as HTMLElement;
+                                                                        if (lastRow) {
+                                                                            // Verify this is actually a new empty row by checking if the skill name input is empty
+                                                                            const skillInput = lastRow.querySelector('input[placeholder="Skill Name"]') as HTMLInputElement;
+                                                                            if (skillInput && skillInput.value === '') {
+                                                                                // Scroll the row into the center of the view for better visibility
+                                                                                lastRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                                                                                // Add a temporary highlight to make it obvious
+                                                                                lastRow.style.backgroundColor = '#dcfce7'; // light green
+                                                                                setTimeout(() => {
+                                                                                    lastRow.style.backgroundColor = '';
+                                                                                }, 2000);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }, 300); // Increased from 100ms to 300ms
+                                                            }, 50);
                                                         }}
                                                         className="px-3 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 text-sm font-medium transition-colors flex items-center gap-1"
                                                     >
@@ -1385,8 +1492,8 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
             {toast && (
                 <div className="fixed top-4 right-4 z-50 animate-slide-in">
                     <div className={`rounded-lg shadow-lg p-4 flex items-center gap-3 min-w-[300px] max-w-md ${toast.type === 'success'
-                            ? 'bg-green-50 border border-green-200'
-                            : 'bg-red-50 border border-red-200'
+                        ? 'bg-green-50 border border-green-200'
+                        : 'bg-red-50 border border-red-200'
                         }`}>
                         {toast.type === 'success' ? (
                             <svg className="w-6 h-6 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">

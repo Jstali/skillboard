@@ -779,7 +779,12 @@ export const templatesApi = {
     if (templateName) {
       formData.append('template_name', templateName);
     }
-    const response = await api.post<TemplateUploadResponse>('/api/admin/templates/upload', formData);
+    // Must set Content-Type to multipart/form-data for file uploads
+    const response = await api.post<TemplateUploadResponse>('/api/admin/templates/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     return response.data;
   },
 

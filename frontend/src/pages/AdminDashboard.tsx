@@ -1640,11 +1640,12 @@ export const AdminDashboard: React.FC = () => {
             <TemplateManagement
               onUploadSuccess={(result) => {
                 // Convert TemplateUploadResponse to UploadResponse format
+                // Safely handle potentially undefined properties
                 setSkillsUploadResult({
-                  message: result.message,
-                  rows_processed: result.templates_created,
-                  rows_created: result.templates_created,
-                  rows_updated: 0,
+                  message: result.message || 'Template uploaded successfully',
+                  rows_processed: result.templates_created || result.rows_processed || 0,
+                  rows_created: result.templates_created || result.rows_created || 0,
+                  rows_updated: result.rows_updated || 0,
                 });
               }}
               onUploadError={(error) => setUploadError(error)}
@@ -2770,7 +2771,7 @@ export const AdminDashboard: React.FC = () => {
                   />
                 </div>
 
-                <div className="hidden">
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Map to Skill (for auto-assignment)</label>
                   <select
                     value={currentCourse.skill_id || ''}

@@ -9,7 +9,7 @@ import json
 from app.db import database
 from app.db.models import (
     TemplateAssignment, Employee, SkillTemplate, User,
-    EmployeeTemplateResponse, Skill, SkillGapResult
+    EmployeeTemplateResponse, Skill, SkillGapResult, EmployeeSkill
 )
 from app.api.dependencies import get_current_user
 
@@ -328,6 +328,68 @@ async def submit_template(
         db.commit()
         
         print(f"DEBUG: Assignment status updated to Completed")
+        
+        # ============================================================
+        # AUTO-IMPORT SKILLS TO EMPLOYEE_SKILLS TABLE
+        # ============================================================
+        print(f"DEBUG: Starting auto-import of skills to employee_skills")
+        
+        # Get all responses for this assignment
+        template_responses = db.query(EmployeeTemplateResponse).filter(
+            EmployeeTemplateResponse.assignment_id == assignment_id
+        ).all()
+        
+        print(f"DEBUG: Found {len(template_responses)} skills to import")
+        
+        imported_count = 0
+        updated_count = 0
+        
+        for response in template_responses:
+            # Check if skill already exists for this employee
+            existing_skill = db.query(EmployeeSkill).filter(
+                EmployeeSkill.employee_id == employee.id,
+                EmployeeSkill.skill_id == response.skill_id
+            ).first()
+            
+            if existing_skill:
+                # Update existing skill with latest level (if level was provided)
+                if response.employee_level:
+                    # Only update rating if employee selected a level
+                    existing_skill.rating = response.employee_level
+                    existing_skill.years_experience = response.years_experience or existing_skill.years_experience
+                    if response.notes:
+                        existing_skill.notes = response.notes
+                    print(f"DEBUG: Updated existing skill '{response.skill.name}' to level {response.employee_level}")
+                    updated_count += 1
+                else:
+                    # Employee didn't select a level, but skill exists - don't overwrite
+                    print(f"DEBUG: Skipped updating '{response.skill.name}' - no level provided and skill exists")
+            else:
+                # Create new employee_skill entry
+                # Note: rating can be None if employee didn't select a level
+                new_employee_skill = EmployeeSkill(
+                    employee_id=employee.id,
+                    skill_id=response.skill_id,
+                    rating=response.employee_level,  # Can be None
+                    initial_rating=response.employee_level,  # Track initial for improvements
+                    years_experience=response.years_experience or 0,
+                    notes=response.notes,
+                    is_interested=False,  # From template, not interested
+                    is_custom=False  # From template, not custom
+                )
+                db.add(new_employee_skill)
+                level_str = response.employee_level if response.employee_level else "no level"
+                print(f"DEBUG: Created new skill '{response.skill.name}' with {level_str}")
+                imported_count += 1
+        
+        # Commit the imported skills
+        db.commit()
+        
+        print(f"DEBUG: Auto-import completed - {imported_count} new skills, {updated_count} updated")
+        
+        # ============================================================
+        # END AUTO-IMPORT
+        # ============================================================
         
         # Automatic gap calculation
         # Delete existing gap results

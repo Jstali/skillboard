@@ -43,6 +43,7 @@ export const EmployeeDashboard: React.FC = () => {
   // Accordion states - closed by default
   const [customSkillsExpanded, setCustomSkillsExpanded] = useState(false);
   const [interestedSkillsExpanded, setInterestedSkillsExpanded] = useState(false);
+  const [skillsProficiencyExpanded, setSkillsProficiencyExpanded] = useState(true); // Expanded by default
   const [templateAssignments, setTemplateAssignments] = useState<any[]>([]);
   const navigate = useNavigate();
   const user = authApi.getUser();
@@ -748,38 +749,58 @@ export const EmployeeDashboard: React.FC = () => {
               )}
             </div>
 
-            {/* Skills & Proficiency Section */}
-            <div className="bg-white rounded-md shadow-sm p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-gray-900">Skills & Proficiency</h3>
+            {/* Skills & Proficiency Section - Collapsible */}
+            <div className="bg-white rounded-md shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
                 <button
-                  onClick={() => navigate('/skill-browser')}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
+                  onClick={() => setSkillsProficiencyExpanded(!skillsProficiencyExpanded)}
+                  className="flex items-center gap-2 flex-1"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                  </svg>
-                  Edit Skills
+                  <h3 className="text-lg font-bold text-gray-900">Skills & Proficiency</h3>
+                  <span className="text-sm font-normal text-gray-500">({skills.filter(s => !s.is_interested && !s.is_custom).length})</span>
                 </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => navigate('/skill-browser')}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                    </svg>
+                    Edit Skills
+                  </button>
+                  <button
+                    onClick={() => setSkillsProficiencyExpanded(!skillsProficiencyExpanded)}
+                    className="p-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-5 h-5 text-gray-500 transition-transform ${skillsProficiencyExpanded ? 'rotate-180' : ''}`}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
-              {loading ? (
-                <div className="text-center py-8 text-gray-500">Loading skills...</div>
-              ) : skills.filter(s => !s.is_interested && !s.is_custom).length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No skills added yet</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {skills.filter(s => !s.is_interested && !s.is_custom).map((skill) => (
-                    <div key={skill.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900">{skill.skill?.name}</div>
-                        {skill.skill?.category && <div className="text-xs text-gray-500">{skill.skill.category}</div>}
-                      </div>
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getSkillLevelColor(skill.rating || undefined)}`}>
-                        {skill.rating || 'N/A'}
-                      </span>
+              {skillsProficiencyExpanded && (
+                <div className="px-4 pb-4">
+                  {loading ? (
+                    <div className="text-center py-8 text-gray-500">Loading skills...</div>
+                  ) : skills.filter(s => !s.is_interested && !s.is_custom).length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">No skills added yet</div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {skills.filter(s => !s.is_interested && !s.is_custom).map((skill) => (
+                        <div key={skill.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900">{skill.skill?.name}</div>
+                            {skill.skill?.category && <div className="text-xs text-gray-500">{skill.skill.category}</div>}
+                          </div>
+                          <span className={`px-2 py-1 rounded text-xs font-semibold ${getSkillLevelColor(skill.rating || undefined)}`}>
+                            {skill.rating || 'N/A'}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </div>
