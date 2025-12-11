@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from typing import List, Optional
 from app.db import database, crud
 from app.schemas import Employee, EmployeeSkill, Skill
-from app.api.dependencies import get_admin_user
+from app.api.dependencies import get_hr_or_admin_user
 from app.db.models import User, Employee as EmployeeModel, EmployeeSkill as EmployeeSkillModel, Skill as SkillModel
 
 router = APIRouter(prefix="/api/admin", tags=["admin-dashboard"])
@@ -17,16 +17,26 @@ def get_all_employees(
     limit: int = Query(100, ge=1, le=1000),
     department: Optional[str] = Query(None),
     db: Session = Depends(database.get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_hr_or_admin_user),
 ):
     """Get all employees (admin/HR only)."""
-    query = db.query(EmployeeModel)
+    from sqlalchemy.orm import lazyload
+    
+    query = db.query(EmployeeModel).options(
+        lazyload(EmployeeModel.line_manager),
+        lazyload(EmployeeModel.capability_owner),
+        lazyload(EmployeeModel.user_role),
+        lazyload(EmployeeModel.employee_skills),
+        lazyload(EmployeeModel.project_assignments),
+        lazyload(EmployeeModel.level_movement_requests),
+    )
     
     if department:
         query = query.filter(EmployeeModel.department == department)
     
     employees = query.offset(skip).limit(limit).all()
     return employees
+
 
 
 from pydantic import BaseModel
@@ -42,7 +52,7 @@ class MultiSkillSearchRequest(BaseModel):
 def search_employees_by_skill(
     request: MultiSkillSearchRequest,
     db: Session = Depends(database.get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_hr_or_admin_user),
 ):
     """
     Search for employees by multiple skill-rating criteria (admin/HR only).
@@ -288,7 +298,7 @@ def search_employees_by_skill(
 def get_employee_skills_admin(
     employee_id: str,
     db: Session = Depends(database.get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_hr_or_admin_user),
 ):
     """Get all skills for a specific employee (admin/HR only)."""
     employee = crud.get_employee_by_id(db, employee_id)
@@ -303,7 +313,7 @@ def get_skills_overview(
     category: Optional[str] = Query(None, description="Filter by employee category (e.g., Technical, P&C)"),
     skill_category: Optional[str] = Query(None, description="Filter by skill category (e.g., Programming, Database)"),
     db: Session = Depends(database.get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_hr_or_admin_user),
 ):
     """Get overview of all skills with employee counts and rating breakdown.
     
@@ -402,7 +412,7 @@ def get_skill_improvements(
     employee_id: Optional[str] = Query(None),
     days: int = Query(30, ge=1, le=365, description="Number of days to look back"),
     db: Session = Depends(database.get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_hr_or_admin_user),
 ):
     """
     Get skill improvements - employees who have upgraded their skill ratings.
@@ -573,7 +583,7 @@ def get_skill_improvements(
 @router.get("/dashboard/stats")
 def get_dashboard_stats(
     db: Session = Depends(database.get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_hr_or_admin_user),
 ):
     """Get dashboard statistics for admin/HR."""
     from sqlalchemy import func

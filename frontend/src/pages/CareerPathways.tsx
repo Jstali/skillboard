@@ -51,7 +51,7 @@ export const CareerPathways: React.FC<CareerPathwaysProps> = ({ isEmbedded = fal
   const user = authApi.getUser();
 
   useEffect(() => {
-    if (!user?.is_admin) {
+    if (!user || (!user.is_admin && user.role_id !== 2)) {
       navigate('/login');
       return;
     }
@@ -274,7 +274,7 @@ export const CareerPathways: React.FC<CareerPathwaysProps> = ({ isEmbedded = fal
           <h2 className="text-center text-lg font-semibold text-gray-800 mb-4">Quick Actions</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
             <button
-              onClick={() => navigate('/admin/dashboard?tab=overview')}
+              onClick={() => navigate('/hr/dashboard?tab=overview')}
               className="flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition bg-white"
             >
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
@@ -291,7 +291,7 @@ export const CareerPathways: React.FC<CareerPathwaysProps> = ({ isEmbedded = fal
               </div>
             </button>
             <button
-              onClick={() => navigate('/admin/dashboard?tab=skill-gap')}
+              onClick={() => navigate('/hr/dashboard?tab=skill-gap')}
               className="flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition bg-white"
             >
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50">
@@ -307,7 +307,7 @@ export const CareerPathways: React.FC<CareerPathwaysProps> = ({ isEmbedded = fal
               </div>
             </button>
             <button
-              onClick={() => navigate('/admin/dashboard?tab=employees')}
+              onClick={() => navigate('/hr/dashboard?tab=employees')}
               className="flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition bg-white"
             >
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-green-50">
@@ -323,7 +323,7 @@ export const CareerPathways: React.FC<CareerPathwaysProps> = ({ isEmbedded = fal
               </div>
             </button>
             <button
-              onClick={() => navigate('/admin/dashboard?tab=skills')}
+              onClick={() => navigate('/hr/dashboard?tab=skills')}
               className="flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition bg-white"
             >
               <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-purple-100">
@@ -348,7 +348,7 @@ export const CareerPathways: React.FC<CareerPathwaysProps> = ({ isEmbedded = fal
               </div>
             </button>
             <button
-              onClick={() => navigate('/admin/dashboard?tab=improvements')}
+              onClick={() => navigate('/hr/dashboard?tab=improvements')}
               className="flex items-center gap-3 rounded-2xl shadow-xl hover:shadow-2xl p-4 transition bg-white"
             >
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">

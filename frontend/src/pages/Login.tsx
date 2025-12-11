@@ -20,12 +20,31 @@ export const Login: React.FC = () => {
     try {
       const response = await authApi.login(email, password);
       
-      // Check if user must change password
       if (response.user.must_change_password) {
         navigate('/change-password');
-      } else {
-        // Redirect to dashboard (profile) as landing page for regular users, admin dashboard for admins
-        navigate(response.user.is_admin ? '/admin/dashboard' : '/dashboard');
+        return;
+      }
+      
+      // Route based on role_id
+      const role = response.user.role_id;
+      switch (role) {
+        case 1: // System Admin
+          navigate('/admin/dashboard');
+          break;
+        case 2: // HR
+          navigate('/hr/dashboard');
+          break;
+        case 3: // Capability Partner
+          navigate('/cp/dashboard');
+          break;
+        case 4: // Delivery Manager
+          navigate('/dm/dashboard');
+          break;
+        case 5: // Line Manager
+          navigate('/lm/dashboard');
+          break;
+        default: // Employee
+          navigate('/dashboard');
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');
