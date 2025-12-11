@@ -25,6 +25,9 @@ services:
     container_name: skillboard-backend
     environment:
       DATABASE_URL: postgresql://skillboard:skillboard@postgres:5432/skillboard
+      HRMS_BASE_URL: http://host.docker.internal:8000
+      HRMS_INTEGRATION_EMAIL: admin@nxzen.com
+      HRMS_INTEGRATION_PASSWORD: "123"
     ports:
       - "2608:2608"
     volumes:
@@ -49,7 +52,7 @@ services:
     depends_on:
       - backend
     environment:
-      - VITE_API_URL=http://149.102.158.71:2608
+      - VITE_API_URL=http://localhost:2608
     # For development, use dev server instead of preview
     # Use --host 0.0.0.0 to allow external connections
     command: npm run dev -- --host 0.0.0.0 --port 2607

@@ -1,8 +1,8 @@
 """SQLAlchemy models for Skillboard application."""
-from sqlalchemy import Column, Integer, String, ForeignKey, Enum as SQLEnum, Float, UniqueConstraint, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, ForeignKey, Enum as SQLEnum, Float, UniqueConstraint, Boolean, DateTime, Date, Text, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, date
 import enum
 
 Base = declarative_base()
@@ -59,9 +59,21 @@ class Employee(Base):
     team = Column(String, nullable=True, index=True)  # Team assignment: consulting, technical_delivery, project_programming, corporate_functions_it, corporate_functions_marketing, corporate_functions_finance, corporate_functions_legal, corporate_functions_pc
     band = Column(String, nullable=True, index=True)  # Calculated band: A, B, C, L1, L2
     category = Column(String, nullable=True, index=True)  # Employee category for skill template filtering
-
+    
+    # HRMS Integration fields
+    hrms_employee_id = Column(String, nullable=True, index=True)  # Employee ID from HRMS system
+    line_manager_id = Column(String, nullable=True, index=True)  # Line manager from HRMS
+    home_capability = Column(String, nullable=True, index=True)  # Home capability area (AWL, Technical Delivery, etc.)
+    hire_date = Column(Date, nullable=True)
+    location_id = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    hrms_last_sync = Column(DateTime, nullable=True)  # Last sync timestamp from HRMS
+    
     # Relationship to employee skills
     employee_skills = relationship("EmployeeSkill", back_populates="employee", cascade="all, delete-orphan")
+    # HRMS relationships
+    project_assignments = relationship("HRMSProjectAssignment", back_populates="employee", cascade="all, delete-orphan")
+    hrms_sync_logs = relationship("HRMSEmployeeSync", back_populates="employee", cascade="all, delete-orphan")
 
 
 class EmployeeSkill(Base):
@@ -284,3 +296,180 @@ class SkillGapResult(Base):
     __table_args__ = (
         UniqueConstraint("assignment_id", "skill_id", name="uq_assignment_skill_gap"),
     )
+
+
+# ============================================================================
+# HRMS Integration Models
+# ============================================================================
+
+class HRMSProject(Base):
+    """Projects from HRMS system."""
+    __tablename__ = "hrms_projects"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    hrms_project_id = Column(String, unique=True, index=True, nullable=False)  # Project ID from HRMS
+    project_name = Column(String, nullable=False, index=True)
+    client_name = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="Active")  # Active, Completed, On Hold
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    project_manager_id = Column(String, nullable=True)  # HRMS manager ID
+    project_manager_name = Column(String, nullable=True)
+    
+    # Sync tracking
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    hrms_last_sync = Column(DateTime, nullable=True)
+    
+    # Relationships
+    assignments = relationship("HRMSProjectAssignment", back_populates="project", cascade="all, delete-orphan")
+
+
+class HRMSProjectAssignment(Base):
+    """Employee project assignments from HRMS."""
+    __tablename__ = "hrms_project_assignments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("hrms_projects.id"), nullable=False)
+    
+    # Assignment details from HRMS
+    allocated_days = Column(Float, nullable=False, default=0.0)
+    consumed_days = Column(Float, nullable=False, default=0.0)
+    remaining_days = Column(Float, nullable=False, default=0.0)
+    allocation_percentage = Column(Float, nullable=True)  # Percentage of time allocated
+    month = Column(String, nullable=False, index=True)  # Format: "2025-01"
+    is_primary = Column(Boolean, default=False, nullable=False)
+    
+    # Sync tracking
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    hrms_last_sync = Column(DateTime, nullable=True)
+    
+    # Relationships
+    employee = relationship("Employee", back_populates="project_assignments")
+    project = relationship("HRMSProject", back_populates="assignments")
+    
+    # Unique constraint: one assignment per employee-project-month
+    __table_args__ = (
+        UniqueConstraint("employee_id", "project_id", "month", name="uq_employee_project_month"),
+    )
+
+
+class HRMSAttendanceRecord(Base):
+    """Attendance records from HRMS for skill correlation."""
+    __tablename__ = "hrms_attendance_records"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("hrms_projects.id"), nullable=True)
+    
+    # Attendance details
+    date = Column(Date, nullable=False, index=True)
+    action = Column(String, nullable=False)  # Present, WFH, Leave, At office
+    total_hours = Column(Float, nullable=False, default=0.0)
+    project_hours = Column(Float, nullable=False, default=0.0)
+    
+    # Task details for skill correlation
+    sub_tasks = Column(JSON, nullable=True)  # JSON array of sub-tasks and hours
+    
+    # Sync tracking
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    hrms_last_sync = Column(DateTime, nullable=True)
+    
+    # Relationships
+    employee = relationship("Employee")
+    project = relationship("HRMSProject")
+    
+    # Unique constraint: one record per employee-project-date
+    __table_args__ = (
+        UniqueConstraint("employee_id", "project_id", "date", name="uq_employee_project_date"),
+    )
+
+
+class HRMSEmployeeSync(Base):
+    """Track employee data synchronization from HRMS."""
+    __tablename__ = "hrms_employee_sync"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    
+    # Sync details
+    sync_type = Column(String, nullable=False)  # full_sync, incremental, manual
+    sync_status = Column(String, nullable=False)  # success, failed, partial
+    sync_timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Data synced
+    data_synced = Column(JSON, nullable=True)  # JSON of what data was synced
+    errors = Column(Text, nullable=True)  # Any errors during sync
+    
+    # Relationships
+    employee = relationship("Employee", back_populates="hrms_sync_logs")
+
+
+class HRMSImportLog(Base):
+    """Log of HRMS data import operations."""
+    __tablename__ = "hrms_import_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    import_type = Column(String, nullable=False, index=True)  # employees, projects, assignments, attendance
+    import_timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Import statistics
+    records_processed = Column(Integer, nullable=False, default=0)
+    records_created = Column(Integer, nullable=False, default=0)
+    records_updated = Column(Integer, nullable=False, default=0)
+    records_failed = Column(Integer, nullable=False, default=0)
+    
+    # Import details
+    status = Column(String, nullable=False)  # success, failed, partial
+    error_details = Column(Text, nullable=True)
+    processing_time_seconds = Column(Float, nullable=True)
+    
+    # Data quality metrics
+    data_quality_score = Column(Float, nullable=True)  # 0.0 to 100.0
+    validation_errors = Column(Text, nullable=True)  # JSON array of validation errors
+
+
+class HRMSConfiguration(Base):
+    """HRMS integration configuration."""
+    __tablename__ = "hrms_configuration"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    config_key = Column(String, unique=True, nullable=False, index=True)
+    config_value = Column(Text, nullable=True)  # Encrypted for sensitive values
+    is_encrypted = Column(Boolean, default=False, nullable=False)
+    description = Column(String, nullable=True)
+    
+    # Audit fields
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Relationships
+    updater = relationship("User")
+
+
+class AccessLog(Base):
+    """Audit log for sensitive data access (GDPR compliance)."""
+    __tablename__ = "access_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Access details
+    resource_type = Column(String, nullable=False, index=True)  # Employee, Project, Assignment, Report
+    resource_id = Column(String, nullable=False, index=True)
+    action = Column(String, nullable=False, index=True)  # View, Edit, Delete, Export, Sync
+    accessed_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    # Request details
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    endpoint = Column(String, nullable=True)
+    
+    # Data sensitivity classification
+    data_sensitivity = Column(String, nullable=False, index=True)  # Public, Internal, Sensitive, Restricted
+    
+    # Relationships
+    user = relationship("User")

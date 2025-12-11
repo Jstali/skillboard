@@ -13,3 +13,6 @@ bcrypt==3.2.2
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 pyexcel-ods3==0.6.1
+cryptography==42.0.0
+hypothesis==6.92.1
+httpx==0.25.2
