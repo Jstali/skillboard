@@ -69,6 +69,7 @@ export interface User {
   is_admin: boolean;
   must_change_password: boolean;
   created_at: string;
+  role_id?: number;  // 1=admin, 2=hr, 3=cp, 4=dm, 5=lm, 6=employee
 }
 
 export interface Token {
@@ -319,7 +320,7 @@ export const adminApi = {
   },
 };
 
-// Admin Dashboard API
+// HR Dashboard API
 export interface EmployeeWithSkills extends Employee {
   skills?: EmployeeSkill[];
 }
@@ -889,3 +890,446 @@ export const employeeAssignmentsApi = {
   },
 };
 
+
+// ============================================================================
+// HRMS PRE-INTEGRATION TYPES & APIs
+// ============================================================================
+
+// Project types
+export interface Project {
+  id: number;
+  name: string;
+  description?: string;
+  capability_required?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectCreate {
+  name: string;
+  description?: string;
+  capability_required?: string;
+}
+
+export interface EmployeeProjectAssignment {
+  id: number;
+  employee_id: number;
+  project_id: number;
+  is_primary: boolean;
+  percentage_allocation?: number;
+  line_manager_id?: number;
+  capability_owner_id?: number;
+  start_date?: string;
+  end_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssignEmployeeToProject {
+  employee_id: number;
+  project_id: number;
+  is_primary?: boolean;
+  percentage_allocation?: number;
+  line_manager_id?: number;
+  capability_owner_id?: number;
+  start_date?: string;
+  end_date?: string;
+}
+
+// Capability Owner types
+export interface CapabilityOwner {
+  id: number;
+  capability_name: string;
+  owner_employee_id?: number;
+  created_at: string;
+}
+
+export interface CapabilityOwnerCreate {
+  capability_name: string;
+  owner_employee_id?: number;
+}
+
+// Level Movement types
+export interface LevelMovementRequest {
+  id: number;
+  employee_id: number;
+  current_level?: string;
+  requested_level: string;
+  status: string;
+  readiness_score?: number;
+  submission_date: string;
+  manager_approval_date?: string;
+  cp_approval_date?: string;
+  hr_approval_date?: string;
+  rejection_reason?: string;
+}
+
+export interface LevelMovementRequestCreate {
+  requested_level: string;
+}
+
+export interface ApprovalRequest {
+  comments?: string;
+}
+
+// Org Structure types
+export interface OrgStructure {
+  id: number;
+  employee_id: number;
+  manager_id?: number;
+  level?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Projects API
+export const projectsApi = {
+  list: async (): Promise<Project[]> => {
+    const response = await api.get<Project[]>('/api/projects');
+    return response.data;
+  },
+
+  get: async (id: number): Promise<Project> => {
+    const response = await api.get<Project>(`/api/projects/${id}`);
+    return response.data;
+  },
+
+  create: async (data: ProjectCreate): Promise<Project> => {
+    const response = await api.post<Project>('/api/projects', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: Partial<ProjectCreate>): Promise<Project> => {
+    const response = await api.put<Project>(`/api/projects/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/projects/${id}`);
+  },
+
+  assignEmployee: async (projectId: number, data: AssignEmployeeToProject): Promise<EmployeeProjectAssignment> => {
+    const response = await api.post<EmployeeProjectAssignment>(`/api/projects/${projectId}/assign-employee`, data);
+    return response.data;
+  },
+
+  getEmployeeProjects: async (employeeId: number): Promise<EmployeeProjectAssignment[]> => {
+    const response = await api.get<EmployeeProjectAssignment[]>(`/api/projects/employee/${employeeId}/projects`);
+    return response.data;
+  },
+
+  updateAssignment: async (assignmentId: number, data: Partial<AssignEmployeeToProject>): Promise<EmployeeProjectAssignment> => {
+    const response = await api.put<EmployeeProjectAssignment>(`/api/projects/assignments/${assignmentId}`, data);
+    return response.data;
+  },
+
+  deleteAssignment: async (assignmentId: number): Promise<void> => {
+    await api.delete(`/api/projects/assignments/${assignmentId}`);
+  },
+};
+
+// Capability Owners API
+export const capabilityOwnersApi = {
+  list: async (): Promise<CapabilityOwner[]> => {
+    const response = await api.get<CapabilityOwner[]>('/api/capability-owners');
+    return response.data;
+  },
+
+  get: async (id: number): Promise<CapabilityOwner> => {
+    const response = await api.get<CapabilityOwner>(`/api/capability-owners/${id}`);
+    return response.data;
+  },
+
+  create: async (data: CapabilityOwnerCreate): Promise<CapabilityOwner> => {
+    const response = await api.post<CapabilityOwner>('/api/capability-owners', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: CapabilityOwnerCreate): Promise<CapabilityOwner> => {
+    const response = await api.put<CapabilityOwner>(`/api/capability-owners/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/capability-owners/${id}`);
+  },
+
+  getEmployees: async (id: number): Promise<Employee[]> => {
+    const response = await api.get<Employee[]>(`/api/capability-owners/${id}/employees`);
+    return response.data;
+  },
+};
+
+// Org Structure API
+export const orgStructureApi = {
+  assignManager: async (employeeId: number, managerId: number): Promise<{ message: string }> => {
+    const response = await api.post('/api/org-structure/assign-manager', null, {
+      params: { employee_id: employeeId, manager_id: managerId }
+    });
+    return response.data;
+  },
+
+  uploadStructure: async (file: File): Promise<UploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post<UploadResponse>('/api/org-structure/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  },
+
+  getStructure: async (): Promise<OrgStructure[]> => {
+    const response = await api.get<OrgStructure[]>('/api/org-structure');
+    return response.data;
+  },
+
+  getDirectReports: async (employeeId: number): Promise<Employee[]> => {
+    const response = await api.get<Employee[]>(`/api/org-structure/employees/${employeeId}/direct-reports`);
+    return response.data;
+  },
+
+  getHierarchy: async (employeeId: number): Promise<any> => {
+    const response = await api.get(`/api/org-structure/employees/${employeeId}/hierarchy`);
+    return response.data;
+  },
+};
+
+// Level Movement API
+export const levelMovementApi = {
+  createRequest: async (data: LevelMovementRequestCreate): Promise<LevelMovementRequest> => {
+    const response = await api.post<LevelMovementRequest>('/api/level-movement/request', data);
+    return response.data;
+  },
+
+  listRequests: async (statusFilter?: string): Promise<LevelMovementRequest[]> => {
+    const response = await api.get<LevelMovementRequest[]>('/api/level-movement/requests', {
+      params: statusFilter ? { status_filter: statusFilter } : {}
+    });
+    return response.data;
+  },
+
+  getRequest: async (id: number): Promise<LevelMovementRequest> => {
+    const response = await api.get<LevelMovementRequest>(`/api/level-movement/requests/${id}`);
+    return response.data;
+  },
+
+  getMyRequests: async (): Promise<LevelMovementRequest[]> => {
+    const response = await api.get<LevelMovementRequest[]>('/api/level-movement/my-requests');
+    return response.data;
+  },
+
+  getPendingApprovals: async (): Promise<LevelMovementRequest[]> => {
+    const response = await api.get<LevelMovementRequest[]>('/api/level-movement/pending-approvals');
+    return response.data;
+  },
+
+  approve: async (id: number, data: ApprovalRequest): Promise<LevelMovementRequest> => {
+    const response = await api.post<LevelMovementRequest>(`/api/level-movement/requests/${id}/approve`, data);
+    return response.data;
+  },
+
+  reject: async (id: number, data: ApprovalRequest): Promise<LevelMovementRequest> => {
+    const response = await api.post<LevelMovementRequest>(`/api/level-movement/requests/${id}/reject`, data);
+    return response.data;
+  },
+
+  getApprovals: async (id: number): Promise<any[]> => {
+    const response = await api.get(`/api/level-movement/requests/${id}/approvals`);
+    return response.data;
+  },
+};
+
+// ============================================================================
+// SKILL BOARD VIEWS TYPES & APIs
+// ============================================================================
+
+// Skill Board Types
+export interface ProficiencyDisplay {
+  level: string;
+  color: string;
+  icon: string;
+  numeric_value: number;
+  description: string;
+  css_class: string;
+}
+
+export interface SkillWithProficiency {
+  skill_id: number;
+  skill_name: string;
+  category?: string;
+  rating?: string;
+  rating_display: ProficiencyDisplay;
+  years_experience?: number;
+  is_required: boolean;
+  meets_requirement: boolean;
+}
+
+export interface SkillGapInfo {
+  skill_id: number;
+  skill_name: string;
+  category?: string;
+  required_level: string;
+  actual_level?: string;
+  gap_value: number;
+  priority: string;
+}
+
+export interface CapabilityAlignmentInfo {
+  capability: string;
+  alignment_score: number;
+  required_skills_met: number;
+  required_skills_total: number;
+  average_proficiency: number;
+}
+
+export interface EmployeeSkillBoardData {
+  employee_id: string;
+  name: string;
+  home_capability?: string;
+  team?: string;
+  skills: SkillWithProficiency[];
+  capability_alignment?: CapabilityAlignmentInfo;
+  skill_gaps: SkillGapInfo[];
+}
+
+// Metrics Types
+export interface SkillDistribution {
+  capability?: string;
+  total_employees: number;
+  skill_counts: Record<string, number>;
+  proficiency_distribution: Record<string, Record<string, number>>;
+}
+
+export interface CoverageMetrics {
+  capability: string;
+  coverage_percentage: number;
+  skills_with_coverage: number;
+  skills_without_coverage: number;
+  critical_gaps: string[];
+}
+
+export interface TrainingNeedInfo {
+  skill_name: string;
+  current_coverage: number;
+  required_coverage: number;
+  gap_percentage: number;
+  priority: string;
+}
+
+// Reconciliation Types
+export interface AssignmentInfoData {
+  project_name: string;
+  allocation_percentage?: number;
+  is_primary: boolean;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface DiscrepancyInfo {
+  employee_id: string;
+  employee_name: string;
+  discrepancy_type: string;
+  skill_board_value?: string;
+  hrms_value?: string;
+  field: string;
+}
+
+export interface ReconciliationResultData {
+  employee_id: string;
+  employee_name: string;
+  skill_board_assignments: AssignmentInfoData[];
+  hrms_assignments: AssignmentInfoData[];
+  discrepancies: DiscrepancyInfo[];
+  match_status: string;
+}
+
+export interface ReconciliationReportData {
+  generated_at: string;
+  total_employees: number;
+  employees_matched: number;
+  employees_with_discrepancies: number;
+  total_discrepancies: number;
+  discrepancy_breakdown: Record<string, number>;
+  results: ReconciliationResultData[];
+}
+
+// Skill Board API
+export const skillBoardApi = {
+  getEmployeeSkillBoard: async (employeeId: string): Promise<EmployeeSkillBoardData> => {
+    const response = await api.get<EmployeeSkillBoardData>(`/api/skill-board/${employeeId}`);
+    return response.data;
+  },
+
+  getEmployeeSkills: async (employeeId: string): Promise<SkillWithProficiency[]> => {
+    const response = await api.get<SkillWithProficiency[]>(`/api/skill-board/${employeeId}/skills`);
+    return response.data;
+  },
+
+  getEmployeeGaps: async (employeeId: string): Promise<SkillGapInfo[]> => {
+    const response = await api.get<SkillGapInfo[]>(`/api/skill-board/${employeeId}/gaps`);
+    return response.data;
+  },
+
+  getEmployeeAlignment: async (employeeId: string): Promise<CapabilityAlignmentInfo | null> => {
+    const response = await api.get<CapabilityAlignmentInfo | null>(`/api/skill-board/${employeeId}/alignment`);
+    return response.data;
+  },
+};
+
+// Metrics API
+export const metricsApi = {
+  getSkillCountsByProficiency: async (
+    capability?: string,
+    team?: string,
+    band?: string
+  ): Promise<Record<string, number>> => {
+    const params: any = {};
+    if (capability) params.capability = capability;
+    if (team) params.team = team;
+    if (band) params.band = band;
+    const response = await api.get<Record<string, number>>('/api/metrics/counts', { params });
+    return response.data;
+  },
+
+  getCapabilityDistribution: async (capability?: string): Promise<SkillDistribution> => {
+    const params = capability ? { capability } : {};
+    const response = await api.get<SkillDistribution>('/api/metrics/distribution', { params });
+    return response.data;
+  },
+
+  getCapabilityCoverage: async (capability: string): Promise<CoverageMetrics> => {
+    const response = await api.get<CoverageMetrics>(`/api/metrics/coverage/${capability}`);
+    return response.data;
+  },
+
+  getTrainingNeeds: async (capability: string): Promise<TrainingNeedInfo[]> => {
+    const response = await api.get<TrainingNeedInfo[]>(`/api/metrics/training-needs/${capability}`);
+    return response.data;
+  },
+};
+
+// Reconciliation API
+export const reconciliationApi = {
+  compareEmployeeAssignments: async (employeeId: string): Promise<ReconciliationResultData> => {
+    const response = await api.get<ReconciliationResultData>(`/api/reconciliation/compare/${employeeId}`);
+    return response.data;
+  },
+
+  getAllDiscrepancies: async (): Promise<DiscrepancyInfo[]> => {
+    const response = await api.get<DiscrepancyInfo[]>('/api/reconciliation/discrepancies');
+    return response.data;
+  },
+
+  getReconciliationReport: async (): Promise<ReconciliationReportData> => {
+    const response = await api.get<ReconciliationReportData>('/api/reconciliation/report');
+    return response.data;
+  },
+
+  exportReconciliationData: async (format: string = 'json'): Promise<Blob> => {
+    const response = await api.get('/api/reconciliation/export', {
+      params: { format },
+      responseType: 'blob'
+    });
+    return response.data;
+  },
+};

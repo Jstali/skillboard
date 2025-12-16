@@ -28,10 +28,18 @@ class HRMSClient:
     """Client for communicating with HRMS API."""
     
     def __init__(self):
-        self.base_url = getattr(settings, 'HRMS_BASE_URL', 'http://127.0.0.1:8000')
-        self.timeout = getattr(settings, 'HRMS_TIMEOUT', 30)
         self.auth_token = None
         self.token_expires_at = None
+    
+    @property
+    def base_url(self) -> str:
+        """Get HRMS base URL from settings at runtime."""
+        return getattr(settings, 'HRMS_BASE_URL', 'http://127.0.0.1:8000')
+    
+    @property
+    def timeout(self) -> int:
+        """Get HRMS timeout from settings at runtime."""
+        return getattr(settings, 'HRMS_TIMEOUT', 30)
         
     async def _authenticate(self) -> str:
         """Authenticate with HRMS and get access token."""
@@ -132,16 +140,93 @@ class HRMSClient:
         logger.info("Fetching HR list from HRMS")
         return await self._make_request("GET", "/users/hrs")
     
+    # Location Data Methods
+    async def get_all_locations(self) -> List[Dict[str, Any]]:
+        """Get all locations from HRMS."""
+        logger.info("Fetching all locations from HRMS")
+        response = await self._make_request("GET", "/locations/")
+        # HRMS returns {"status": "success", "data": [...]}
+        if isinstance(response, dict) and "data" in response:
+            return response["data"]
+        return response if isinstance(response, list) else []
+    
+    async def get_delivery_managers(self) -> List[Dict[str, Any]]:
+        """Get all delivery managers from HRMS (managers assigned by location)."""
+        logger.info("Fetching delivery managers from HRMS")
+        # Get managers list - delivery managers are managers assigned to locations
+        response = await self._make_request("GET", "/users/managers")
+        if isinstance(response, dict) and "managers" in response:
+            return response["managers"]
+        return response if isinstance(response, list) else []
+    
     # Project Data Methods
     async def get_all_projects(self) -> List[Dict[str, Any]]:
         """Get all projects from HRMS."""
         logger.info("Fetching all projects from HRMS")
-        return await self._make_request("GET", "/projects/get_projects")
+        return await self._make_request("GET", "/projects/all-projects")
     
     async def get_manager_employees(self, manager_id: str) -> List[Dict[str, Any]]:
-        """Get employees assigned to a specific manager."""
+        """Get employees assigned to a specific manager by ID using /projects/manager-employees endpoint."""
         logger.info(f"Fetching employees for manager {manager_id} from HRMS")
-        return await self._make_request("GET", f"/projects/manager-employees?manager_id={manager_id}")
+        response = await self._make_request("GET", f"/projects/manager-employees?manager_id={manager_id}")
+        # Response is a list of employees directly
+        if isinstance(response, list):
+            return response
+        # Handle wrapped responses just in case
+        if isinstance(response, dict):
+            if "value" in response:
+                return response["value"]
+            if "employees" in response:
+                return response["employees"]
+        return []
+    
+    async def get_employees_by_manager_name(self, manager_name: str) -> List[Dict[str, Any]]:
+        """Get employees whose manager list contains the given manager name."""
+        logger.info(f"Fetching employees for manager name '{manager_name}' from HRMS")
+        all_employees = await self.get_all_employees()
+        
+        # Filter employees where manager_name is in their managers list
+        result = []
+        for emp in all_employees:
+            managers = emp.get("managers", [])
+            if manager_name in managers:
+                result.append(emp)
+        
+        logger.info(f"Found {len(result)} employees for manager '{manager_name}'")
+        return result
+    
+    async def get_employees_by_manager_email(self, manager_email: str) -> List[Dict[str, Any]]:
+        """Get employees whose manager matches the given email using the direct API endpoint."""
+        logger.info(f"Fetching employees for manager email '{manager_email}' from HRMS")
+        
+        # First, get the manager's ID from their email
+        managers_response = await self.get_managers_list()
+        
+        # Handle both dict and list responses
+        if isinstance(managers_response, dict) and "managers" in managers_response:
+            managers = managers_response["managers"]
+        elif isinstance(managers_response, list):
+            managers = managers_response
+        else:
+            managers = []
+        
+        logger.info(f"Found {len(managers)} managers in HRMS")
+        
+        # Find manager by email
+        manager_id = None
+        for mgr in managers:
+            if isinstance(mgr, dict):
+                if mgr.get("email") == manager_email or mgr.get("company_email") == manager_email:
+                    manager_id = mgr.get("id")
+                    logger.info(f"Found manager {mgr.get('name')} with id={manager_id}")
+                    break
+        
+        if not manager_id:
+            logger.warning(f"Manager with email '{manager_email}' not found in HRMS")
+            return []
+        
+        # Use the direct endpoint to get employees for this manager
+        return await self.get_manager_employees(str(manager_id))
     
     # Allocation Data Methods
     async def get_employee_allocations(self, employee_id: str, month: str) -> Dict[str, Any]:

@@ -1,4 +1,4 @@
-/** Admin/HR Dashboard - View all employees, skills, and improvements. */
+/** HR Dashboard - View all employees, skills, and improvements. */
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
@@ -148,6 +148,8 @@ export const AdminDashboard: React.FC = () => {
       setAllSimpleSkills(skillsData);
     } catch (error) {
       console.error('Failed to load courses:', error);
+      setCourses([]);
+      setAllSimpleSkills([]);
     } finally {
       setLoadingCourses(false);
     }
@@ -295,45 +297,84 @@ export const AdminDashboard: React.FC = () => {
     setLoading(true);
     try {
       if (activeTab === 'overview') {
-        const statsData = await adminDashboardApi.getDashboardStats();
-        setStats(statsData);
-        const skillsData = await adminDashboardApi.getSkillsOverview(undefined, undefined);
-        setSkillsOverview(skillsData);
-        const initialTop5 = skillsData
-          .map(s => ({ name: s.skill.name, total: (s.existing_skills_count || 0) + (s.interested_skills_count || 0) }))
-          .sort((a, b) => b.total - a.total)
-          .slice(0, 10)
-          .map(s => s.name);
-        setAdoptionSelectedSkills(initialTop5);
+        try {
+          const statsData = await adminDashboardApi.getDashboardStats();
+          setStats(statsData);
+        } catch (error) {
+          console.error('Failed to load stats:', error);
+          // Set default stats for HR users
+          setStats({
+            total_employees: 0,
+            total_skills: 0,
+            employees_with_existing_skills: 0,
+            employees_with_interested_skills: 0,
+            total_skill_mappings: 0,
+            rating_breakdown: {}
+          });
+        }
+        
+        try {
+          const skillsData = await adminDashboardApi.getSkillsOverview(undefined, undefined);
+          setSkillsOverview(skillsData);
+          const initialTop5 = skillsData
+            .map(s => ({ name: s.skill.name, total: (s.existing_skills_count || 0) + (s.interested_skills_count || 0) }))
+            .sort((a, b) => b.total - a.total)
+            .slice(0, 10)
+            .map(s => s.name);
+          setAdoptionSelectedSkills(initialTop5);
+        } catch (error) {
+          console.error('Failed to load skills overview:', error);
+          setSkillsOverview([]);
+        }
+        
         try {
           const analyses = await bandsApi.getAllEmployeesAnalysis();
           setAllEmployeesAnalysis(analyses);
-        } catch (e) { }
+        } catch (e) {
+          console.error('Failed to load band analysis:', e);
+          setAllEmployeesAnalysis([]);
+        }
       } else if (activeTab === 'employees') {
-        const employeesData = await adminDashboardApi.getEmployees(0, 1000, departmentFilter || undefined);
-        setEmployees(employeesData);
+        try {
+          const employeesData = await adminDashboardApi.getEmployees(0, 1000, departmentFilter || undefined);
+          setEmployees(employeesData);
+        } catch (error) {
+          console.error('Failed to load employees:', error);
+          setEmployees([]);
+        }
       } else if (activeTab === 'courses') {
         await loadCourses();
       } else if (activeTab === 'skills') {
-        // Load category templates
-        const categories = await categoriesApi.getAll();
-        setEmployeeCategories(categories);
+        try {
+          // Load category templates
+          const categories = await categoriesApi.getAll();
+          setEmployeeCategories(categories);
 
-        // Load templates with stats for each category
-        const templates: Record<string, any[]> = {};
-        for (const category of categories) {
-          try {
-            const template = await categoriesApi.getTemplateWithStats(category);
-            templates[category] = template;
-          } catch (error) {
-            console.error(`Failed to load template for ${category}:`, error);
-            templates[category] = [];
+          // Load templates with stats for each category
+          const templates: Record<string, any[]> = {};
+          for (const category of categories) {
+            try {
+              const template = await categoriesApi.getTemplateWithStats(category);
+              templates[category] = template;
+            } catch (error) {
+              console.error(`Failed to load template for ${category}:`, error);
+              templates[category] = [];
+            }
           }
+          setCategoryTemplates(templates);
+        } catch (error) {
+          console.error('Failed to load categories:', error);
+          setEmployeeCategories([]);
+          setCategoryTemplates({});
         }
-        setCategoryTemplates(templates);
       } else if (activeTab === 'improvements') {
-        const improvementsData = await adminDashboardApi.getSkillImprovements();
-        setImprovements(improvementsData.improvements);
+        try {
+          const improvementsData = await adminDashboardApi.getSkillImprovements();
+          setImprovements(improvementsData.improvements);
+        } catch (error) {
+          console.error('Failed to load improvements:', error);
+          setImprovements([]);
+        }
       }
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
@@ -649,7 +690,7 @@ export const AdminDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F6F2F4]">
-      <PageHeader title="Admin Dashboard" subtitle="Overview of skills, employees, and learning" />
+      <PageHeader title="HR Dashboard" subtitle="Overview of skills, employees, and learning" />
 
       <div className="max-w-7xl mx-auto px-6 mt-4">
         {/* Tabs */}
@@ -672,7 +713,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             <div
-              onClick={() => { setActiveTab('skill-gap'); navigate('/admin/dashboard?tab=skill-gap'); }}
+              onClick={() => { setActiveTab('skill-gap'); navigate('/hr/dashboard?tab=skill-gap'); }}
               className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'skill-gap' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
             >
               <div className={`p-2 rounded-lg transition-transform ${activeTab === 'skill-gap' ? 'scale-110 bg-red-50' : 'bg-red-50 group-hover:scale-110'}`}>
@@ -685,7 +726,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             <div
-              onClick={() => { setActiveTab('employees'); navigate('/admin/dashboard?tab=employees'); }}
+              onClick={() => { setActiveTab('employees'); navigate('/hr/dashboard?tab=employees'); }}
               className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'employees' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
             >
               <div className={`p-2 rounded-lg transition-transform ${activeTab === 'employees' ? 'scale-110 bg-red-50' : 'bg-green-50 group-hover:scale-110'}`}>
@@ -698,7 +739,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             <div
-              onClick={() => { setActiveTab('skills'); navigate('/admin/dashboard?tab=skills'); }}
+              onClick={() => { setActiveTab('skills'); navigate('/hr/dashboard?tab=skills'); }}
               className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'skills' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
             >
               <div className={`p-2 rounded-lg transition-transform ${activeTab === 'skills' ? 'scale-110 bg-red-50' : 'bg-purple-50 group-hover:scale-110'}`}>
@@ -711,7 +752,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             <div
-              onClick={() => { setActiveTab('improvements'); navigate('/admin/dashboard?tab=improvements'); }}
+              onClick={() => { setActiveTab('improvements'); navigate('/hr/dashboard?tab=improvements'); }}
               className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'improvements' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
             >
               <div className={`p-2 rounded-lg transition-transform ${activeTab === 'improvements' ? 'scale-110 bg-red-50' : 'bg-indigo-50 group-hover:scale-110'}`}>
@@ -724,7 +765,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             <div
-              onClick={() => { setActiveTab('courses'); navigate('/admin/dashboard?tab=courses'); }}
+              onClick={() => { setActiveTab('courses'); navigate('/hr/dashboard?tab=courses'); }}
               className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'courses' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
             >
               <div className={`p-2 rounded-lg transition-transform ${activeTab === 'courses' ? 'scale-110 bg-red-50' : 'bg-violet-50 group-hover:scale-110'}`}>
@@ -737,7 +778,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             <div
-              onClick={() => { setActiveTab('career-pathways'); navigate('/admin/dashboard?tab=career-pathways'); }}
+              onClick={() => { setActiveTab('career-pathways'); navigate('/hr/dashboard?tab=career-pathways'); }}
               className={`bg-white p-4 w-40 h-32 rounded-2xl border-2 ${activeTab === 'career-pathways' ? 'border-red-500 shadow-md ring-2 ring-red-100' : 'border-transparent shadow-sm hover:shadow-md'} cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2 group`}
             >
               <div className={`p-2 rounded-lg transition-transform ${activeTab === 'career-pathways' ? 'scale-110 bg-red-50' : 'bg-teal-50 group-hover:scale-110'}`}>

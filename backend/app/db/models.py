@@ -35,13 +35,19 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(String, nullable=True, unique=True, index=True)  # References Employee.employee_id (string), not FK to avoid circular deps
+    employee_id = Column(String, nullable=True, unique=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
     must_change_password = Column(Boolean, default=False, nullable=False)
+    role_id = Column(Integer, ForeignKey("roles.id"), nullable=True, default=6)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    role = relationship("Role", back_populates="users")
+
+
 
 
 class Employee(Base):
@@ -58,11 +64,18 @@ class Employee(Base):
     role = Column(String, nullable=True)
     team = Column(String, nullable=True, index=True)  # Team assignment: consulting, technical_delivery, project_programming, corporate_functions_it, corporate_functions_marketing, corporate_functions_finance, corporate_functions_legal, corporate_functions_pc
     band = Column(String, nullable=True, index=True)  # Calculated band: A, B, C, L1, L2
-    category = Column(String, nullable=True, index=True)  # Employee category for skill template filtering
+    category = Column(String, nullable=True, index=True)
+    
+    # HRMS Pre-Integration Fields
+    line_manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    grade = Column(String(50), nullable=True)
+    capability = Column(String(100), nullable=True)
+    capability_owner_id = Column(Integer, ForeignKey("capability_owners.id"), nullable=True)
+    role_id = Column(Integer, ForeignKey("roles.id"), nullable=True, default=6)
     
     # HRMS Integration fields
     hrms_employee_id = Column(String, nullable=True, index=True)  # Employee ID from HRMS system
-    line_manager_id = Column(String, nullable=True, index=True)  # Line manager from HRMS
+    hrms_line_manager_id = Column(String, nullable=True, index=True)  # Line manager ID from HRMS (string format)
     home_capability = Column(String, nullable=True, index=True)  # Home capability area (AWL, Technical Delivery, etc.)
     hire_date = Column(Date, nullable=True)
     location_id = Column(String, nullable=True)
@@ -72,8 +85,17 @@ class Employee(Base):
     # Relationship to employee skills
     employee_skills = relationship("EmployeeSkill", back_populates="employee", cascade="all, delete-orphan")
     # HRMS relationships
-    project_assignments = relationship("HRMSProjectAssignment", back_populates="employee", cascade="all, delete-orphan")
+    hrms_project_assignments = relationship("HRMSProjectAssignment", back_populates="employee", cascade="all, delete-orphan")
     hrms_sync_logs = relationship("HRMSEmployeeSync", back_populates="employee", cascade="all, delete-orphan")
+    
+    # HRMS Relationships - use primaryjoin to explicitly specify the join condition
+    line_manager = relationship("Employee", remote_side=[id], foreign_keys=[line_manager_id], primaryjoin="Employee.line_manager_id == Employee.id")
+    capability_owner = relationship("CapabilityOwner", foreign_keys=[capability_owner_id], back_populates="employees")
+    user_role = relationship("Role")  # Renamed from 'role' to avoid conflict with role column (job title)
+
+    # Project assignments
+    project_assignments = relationship("EmployeeProjectAssignment", foreign_keys="EmployeeProjectAssignment.employee_id", back_populates="employee")
+    level_movement_requests = relationship("LevelMovementRequest", back_populates="employee")
 
 
 class EmployeeSkill(Base):
@@ -299,6 +321,156 @@ class SkillGapResult(Base):
 
 
 # ============================================================================
+# HRMS PRE-INTEGRATION MODELS
+# Added for multi-project support, RBAC, level movement workflow
+# ============================================================================
+
+class Role(Base):
+    """User roles for RBAC."""
+    __tablename__ = "roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(50), unique=True, nullable=False)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    users = relationship("User", back_populates="role")
+
+
+
+
+
+class Project(Base):
+    """Projects table for multi-project assignment."""
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(String, nullable=True)
+    capability_required = Column(String(100), nullable=True)
+    hrms_project_id = Column(String(100), nullable=True, unique=True, index=True)  # Link to HRMS
+    client_name = Column(String(255), nullable=True)
+    manager_name = Column(String(255), nullable=True)
+    status = Column(String(50), default="Active", nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    assignments = relationship("EmployeeProjectAssignment", back_populates="project", cascade="all, delete-orphan")
+
+
+class EmployeeProjectAssignment(Base):
+    """Employee-Project assignments with allocation and management."""
+    __tablename__ = "employee_project_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    is_primary = Column(Boolean, default=False, nullable=False)
+    percentage_allocation = Column(Integer, nullable=True)  # 0-100
+    line_manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    capability_owner_id = Column(Integer, ForeignKey("capability_owners.id"), nullable=True)
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    project = relationship("Project", back_populates="assignments")
+    line_manager = relationship("Employee", foreign_keys=[line_manager_id])
+
+    # Unique constraint: one assignment per employee-project pair
+    __table_args__ = (
+        UniqueConstraint("employee_id", "project_id", name="uq_employee_project"),
+    )
+
+
+class CapabilityOwner(Base):
+    """Capability owners for grouping employees by capability."""
+    __tablename__ = "capability_owners"
+
+    id = Column(Integer, primary_key=True, index=True)
+    capability_name = Column(String(100), unique=True, nullable=False)
+    owner_employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    employees = relationship("Employee", back_populates="capability_owner", foreign_keys="Employee.capability_owner_id")
+    owner = relationship("Employee", foreign_keys=[owner_employee_id])
+
+
+class LevelMovementRequest(Base):
+    """Level/Grade movement requests for promotions."""
+    __tablename__ = "level_movement_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    current_level = Column(String(50), nullable=True)
+    requested_level = Column(String(50), nullable=False)
+    status = Column(String(50), default="pending", nullable=False)  # pending, manager_approved, cp_approved, hr_approved, rejected
+    readiness_score = Column(Float, nullable=True)
+    submission_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    manager_approval_date = Column(DateTime, nullable=True)
+    cp_approval_date = Column(DateTime, nullable=True)
+    hr_approval_date = Column(DateTime, nullable=True)
+    rejection_reason = Column(String, nullable=True)
+
+    # Relationships
+    employee = relationship("Employee")
+    approvals = relationship("LevelMovementApprovalAudit", back_populates="request", cascade="all, delete-orphan")
+
+
+class LevelMovementApprovalAudit(Base):
+    """Audit trail for level movement approvals."""
+    __tablename__ = "level_movement_approval_audit"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("level_movement_requests.id"), nullable=False)
+    approver_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    approver_role = Column(String(50), nullable=False)
+    approval_status = Column(String(50), nullable=False)  # approved, rejected
+    comments = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    request = relationship("LevelMovementRequest", back_populates="approvals")
+    approver = relationship("Employee")
+
+
+class AuditLog(Base):
+    """Audit logs for GDPR-sensitive data access."""
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action = Column(String(100), nullable=False)
+    target_id = Column(Integer, nullable=True)
+    target_type = Column(String(50), nullable=True)
+    accessed_fields = Column(String, nullable=True)  # JSON string
+    ip_address = Column(String(45), nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class OrgStructure(Base):
+    """Organizational hierarchy structure."""
+    __tablename__ = "org_structure"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), unique=True, nullable=False)
+    manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    level = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    manager = relationship("Employee", foreign_keys=[manager_id])
+
+
+
+# ============================================================================
 # HRMS Integration Models
 # ============================================================================
 
@@ -347,7 +519,7 @@ class HRMSProjectAssignment(Base):
     hrms_last_sync = Column(DateTime, nullable=True)
     
     # Relationships
-    employee = relationship("Employee", back_populates="project_assignments")
+    employee = relationship("Employee", back_populates="hrms_project_assignments")
     project = relationship("HRMSProject", back_populates="assignments")
     
     # Unique constraint: one assignment per employee-project-month

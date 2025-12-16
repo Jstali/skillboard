@@ -37,7 +37,7 @@ services:
         condition: service_healthy
     # Removed --reload to avoid memory issues in Docker
     # To apply code changes, restart: docker-compose restart backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 2608
+    command: uvicorn app.main:app --host 0.0.0.0 --port 2608 --reload
 
   frontend:
     build:
@@ -45,7 +45,7 @@ services:
       dockerfile: Dockerfile
     container_name: skillboard-frontend
     ports:
-      - "2607:2607"
+      - "5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -55,7 +55,7 @@ services:
       - VITE_API_URL=http://localhost:2608
     # For development, use dev server instead of preview
     # Use --host 0.0.0.0 to allow external connections
-    command: npm run dev -- --host 0.0.0.0 --port 2607
+    command: npm run dev -- --host 0.0.0.0 --port 5173
 
 volumes:
   postgres_data:

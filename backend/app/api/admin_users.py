@@ -379,3 +379,159 @@ async def import_users(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 
+
+from pydantic import BaseModel
+from app.db.models import Employee
+
+
+class LinkUserToEmployeeRequest(BaseModel):
+    """Request to link a user to an employee."""
+    user_email: str
+    employee_id: str
+
+
+class SetLineManagerRequest(BaseModel):
+    """Request to set line manager for employees."""
+    manager_employee_id: str
+    employee_ids: List[str]
+
+
+@router.post("/link-user-to-employee")
+async def link_user_to_employee(
+    request: LinkUserToEmployeeRequest,
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """
+    Link a user account to an employee record.
+    This is needed for role-based access control to work properly.
+    """
+    # Find the user
+    user = crud.get_user_by_email(db, request.user_email)
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User with email '{request.user_email}' not found")
+    
+    # Find the employee
+    employee = db.query(Employee).filter(Employee.employee_id == request.employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail=f"Employee with ID '{request.employee_id}' not found")
+    
+    # Update user's employee_id
+    crud.update_user(db, user.id, {"employee_id": request.employee_id})
+    
+    return {
+        "message": f"User '{request.user_email}' linked to employee '{request.employee_id}'",
+        "user_id": user.id,
+        "employee_id": employee.employee_id,
+        "employee_name": employee.name
+    }
+
+
+@router.post("/set-line-manager")
+async def set_line_manager(
+    request: SetLineManagerRequest,
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """
+    Set line manager for multiple employees.
+    This establishes the reporting relationship needed for LM Dashboard.
+    """
+    # Find the manager employee
+    manager = db.query(Employee).filter(Employee.employee_id == request.manager_employee_id).first()
+    if not manager:
+        raise HTTPException(status_code=404, detail=f"Manager with employee ID '{request.manager_employee_id}' not found")
+    
+    updated = []
+    not_found = []
+    
+    for emp_id in request.employee_ids:
+        employee = db.query(Employee).filter(Employee.employee_id == emp_id).first()
+        if employee:
+            employee.line_manager_id = manager.id
+            updated.append(emp_id)
+        else:
+            not_found.append(emp_id)
+    
+    db.commit()
+    
+    return {
+        "message": f"Set line manager '{manager.name}' (ID: {manager.employee_id}) for {len(updated)} employees",
+        "manager_id": manager.id,
+        "manager_employee_id": manager.employee_id,
+        "manager_name": manager.name,
+        "updated_employees": updated,
+        "not_found_employees": not_found
+    }
+
+
+@router.get("/debug-user-employee-links")
+async def debug_user_employee_links(
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """
+    Debug endpoint to show all users and their employee links.
+    """
+    users = db.query(User).all()
+    result = []
+    
+    for user in users:
+        user_info = {
+            "user_id": user.id,
+            "email": user.email,
+            "employee_id": user.employee_id,
+            "role_id": user.role_id,
+            "is_admin": user.is_admin,
+            "employee_record": None
+        }
+        
+        if user.employee_id:
+            emp = db.query(Employee).filter(Employee.employee_id == user.employee_id).first()
+            if emp:
+                user_info["employee_record"] = {
+                    "id": emp.id,
+                    "employee_id": emp.employee_id,
+                    "name": emp.name,
+                    "company_email": emp.company_email,
+                    "line_manager_id": emp.line_manager_id
+                }
+        
+        result.append(user_info)
+    
+    return {"users": result}
+
+
+@router.get("/debug-employees-with-managers")
+async def debug_employees_with_managers(
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """
+    Debug endpoint to show all employees and their line managers.
+    """
+    employees = db.query(Employee).all()
+    result = []
+    
+    for emp in employees:
+        emp_info = {
+            "id": emp.id,
+            "employee_id": emp.employee_id,
+            "name": emp.name,
+            "company_email": emp.company_email,
+            "line_manager_id": emp.line_manager_id,
+            "line_manager": None
+        }
+        
+        if emp.line_manager_id:
+            manager = db.query(Employee).filter(Employee.id == emp.line_manager_id).first()
+            if manager:
+                emp_info["line_manager"] = {
+                    "id": manager.id,
+                    "employee_id": manager.employee_id,
+                    "name": manager.name
+                }
+        
+        result.append(emp_info)
+    
+    return {"employees": result}

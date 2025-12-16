@@ -11,11 +11,18 @@ router = APIRouter(prefix="/api/user-skills", tags=["user-skills"])
 
 
 @router.get("/me/employee", response_model=Employee)
-def get_my_employee(
+async def get_my_employee(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(database.get_db),
 ):
-    """Get employee details for the current logged-in user."""
+    """Get employee details for the current logged-in user, fetching from HRMS when available."""
+    from app.db.models import Employee as EmployeeModel, EmployeeProjectAssignment, Project, HRMSProjectAssignment, HRMSProject
+    from app.services.hrms_client import hrms_client
+    from datetime import datetime
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
     if not current_user.employee_id:
         raise HTTPException(status_code=400, detail="User is not linked to an employee")
     
@@ -23,7 +30,115 @@ def get_my_employee(
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     
-    return employee
+    # Initialize with local data
+    line_manager_name = None
+    current_project = None
+    band = employee.band
+    role = employee.role
+    location = employee.location_id
+    
+    # Get line manager name from local DB
+    if employee.line_manager_id:
+        line_manager = db.query(EmployeeModel).filter(EmployeeModel.id == employee.line_manager_id).first()
+        if line_manager:
+            line_manager_name = line_manager.name
+    
+    # Try to fetch employee profile from HRMS
+    hrms_emp_id = employee.hrms_employee_id or employee.employee_id
+    current_month = datetime.now().strftime("%Y-%m")
+    
+    try:
+        # Fetch employee profile from HRMS (includes manager info)
+        hrms_profile = await hrms_client.get_employee_profile(hrms_emp_id)
+        
+        if hrms_profile:
+            # Update with HRMS data if available
+            if hrms_profile.get("manager_name"):
+                line_manager_name = hrms_profile.get("manager_name")
+            if hrms_profile.get("band") or hrms_profile.get("grade"):
+                band = hrms_profile.get("band") or hrms_profile.get("grade") or band
+            if hrms_profile.get("role") or hrms_profile.get("designation"):
+                role = hrms_profile.get("role") or hrms_profile.get("designation") or role
+            if hrms_profile.get("location") or hrms_profile.get("country"):
+                location = hrms_profile.get("location") or hrms_profile.get("country") or location
+                
+            logger.info(f"Got profile from HRMS for {employee.employee_id}")
+    except Exception as e:
+        logger.warning(f"Could not fetch profile from HRMS for {employee.employee_id}: {e}")
+    
+    # Try to get current project from HRMS allocations
+    try:
+        # Fetch allocations from HRMS
+        allocations = await hrms_client.get_employee_allocations(hrms_emp_id, current_month)
+        
+        if allocations:
+            # Get primary project from allocations
+            projects = allocations.get("projects") or allocations.get("allocations") or []
+            if isinstance(allocations, dict) and allocations.get("project_name"):
+                current_project = allocations.get("project_name")
+            elif projects and len(projects) > 0:
+                # Get the project with highest allocation or first one
+                primary = max(projects, key=lambda p: p.get("allocation_percentage", 0) or p.get("allocated_days", 0), default=None)
+                if primary:
+                    current_project = primary.get("project_name") or primary.get("name")
+            
+            logger.info(f"Got allocations from HRMS for {employee.employee_id}: {current_project}")
+    except Exception as e:
+        logger.warning(f"Could not fetch allocations from HRMS for {employee.employee_id}: {e}")
+    
+    # Try active projects endpoint as fallback
+    if not current_project:
+        try:
+            active_projects = await hrms_client.get_active_projects(hrms_emp_id, current_month)
+            if active_projects and len(active_projects) > 0:
+                current_project = active_projects[0].get("project_name") or active_projects[0].get("name")
+                logger.info(f"Got active project from HRMS for {employee.employee_id}: {current_project}")
+        except Exception as e:
+            logger.warning(f"Could not fetch active projects from HRMS: {e}")
+    
+    # Final fallback to local DB
+    if not current_project:
+        # Try HRMS project assignments in local DB
+        hrms_assignment = db.query(HRMSProjectAssignment).filter(
+            HRMSProjectAssignment.employee_id == employee.id,
+            HRMSProjectAssignment.is_primary == True
+        ).first()
+        
+        if hrms_assignment:
+            hrms_project = db.query(HRMSProject).filter(HRMSProject.id == hrms_assignment.project_id).first()
+            if hrms_project:
+                current_project = hrms_project.project_name
+        
+        # Final fallback to local project assignments
+        if not current_project:
+            project_assignment = db.query(EmployeeProjectAssignment).filter(
+                EmployeeProjectAssignment.employee_id == employee.id,
+                EmployeeProjectAssignment.is_primary == True
+            ).first()
+            if project_assignment:
+                project = db.query(Project).filter(Project.id == project_assignment.project_id).first()
+                if project:
+                    current_project = project.name
+    
+    # Return employee with HRMS-enriched data
+    return Employee(
+        id=employee.id,
+        employee_id=employee.employee_id,
+        name=employee.name,
+        first_name=employee.first_name,
+        last_name=employee.last_name,
+        company_email=employee.company_email,
+        department=employee.department,
+        role=role,
+        team=employee.team,
+        band=band,
+        category=employee.category,
+        capability=employee.capability,
+        home_capability=employee.home_capability,
+        location_id=location,
+        line_manager_name=line_manager_name,
+        current_project=current_project
+    )
 
 
 @router.get("/me", response_model=List[EmployeeSkill])

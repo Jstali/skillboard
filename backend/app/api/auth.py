@@ -49,6 +49,7 @@ def login(
             is_admin=user.is_admin,
             must_change_password=user.must_change_password,
             created_at=user.created_at,
+            role_id=user.role_id,
         ),
     )
 

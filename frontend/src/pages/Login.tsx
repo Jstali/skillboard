@@ -20,12 +20,38 @@ export const Login: React.FC = () => {
     try {
       const response = await authApi.login(email, password);
       
-      // Check if user must change password
       if (response.user.must_change_password) {
         navigate('/change-password');
-      } else {
-        // Redirect to dashboard (profile) as landing page for regular users, admin dashboard for admins
-        navigate(response.user.is_admin ? '/admin/dashboard' : '/dashboard');
+        return;
+      }
+      
+      // Route based on role_id
+      // Database roles:
+      // 1 = admin (System Admin)
+      // 2 = hr (HR Manager)
+      // 3 = line_manager (Client-side Line Manager - bridge between client and employee)
+      // 4 = capability_partner (Capability Partner)
+      // 5 = delivery_manager (Location-based Delivery Manager - assigned to all employees by location)
+      // 6 = employee (Regular Employee)
+      const role = response.user.role_id;
+      switch (role) {
+        case 1: // System Admin
+          navigate('/admin/dashboard');
+          break;
+        case 2: // HR
+          navigate('/hr/dashboard');
+          break;
+        case 3: // Line Manager (Client-side)
+          navigate('/lm/dashboard');
+          break;
+        case 4: // Capability Partner
+          navigate('/cp/dashboard');
+          break;
+        case 5: // Delivery Manager (Location-based)
+          navigate('/dm/dashboard');
+          break;
+        default: // Employee (role_id 6 or others)
+          navigate('/dashboard');
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');

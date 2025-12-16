@@ -262,7 +262,7 @@ python -m app.scripts.create_admin --email admin@company.com --password yourpass
 
 After creating/promoting an admin user, you can:
 1. Log in at `/login` with the admin email and password
-2. Access the Admin Dashboard at `/admin/dashboard`
+2. Access the HR Dashboard at `/hr/dashboard` or Admin Dashboard at `/admin/dashboard`
 3. Import users and skills via the Admin Users page at `/admin/users`
 
 ### User Import & Temporary Passwords
@@ -281,6 +281,7 @@ After creating/promoting an admin user, you can:
    ```bash
    cd backend
    python -m app.scripts.seed_users examples/users.csv
+   uvicorn app.main:app
    ```
 
 3. **Get Temporary Passwords**:

@@ -12,6 +12,6 @@ fi
 # Activate the Python 3.12 virtual environment
 source venv/bin/activate
 
-# Run the backend server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# Run the backend server on port 2608 (HRMS uses 8000)
+uvicorn app.main:app --reload --host 0.0.0.0 --port 2608
 

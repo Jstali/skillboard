@@ -571,12 +571,14 @@ export const EmployeeDashboard: React.FC = () => {
                     <tr>
                       <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Line Manager</td>
                       <td className="px-4 py-2 text-sm text-gray-900">
-                        {employee?.department || '-'}
+                        {(employee as any)?.line_manager_name || '-'}
                       </td>
                     </tr>
                     <tr>
                       <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Country</td>
-                      <td className="px-4 py-2 text-sm text-gray-900">India</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        {(employee as any)?.location_id || '-'}
+                      </td>
                     </tr>
                     <tr>
                       <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Role Title</td>
@@ -589,9 +591,15 @@ export const EmployeeDashboard: React.FC = () => {
                       <td className="px-4 py-2 text-sm text-gray-900">{employee?.band || analysis?.band || '-'}</td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Current Project / Investment Bank</td>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Capability</td>
                       <td className="px-4 py-2 text-sm text-gray-900">
-                        {employee?.department || 'UKPN'}
+                        {(employee as any)?.capability || (employee as any)?.home_capability || '-'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 bg-gray-50">Current Project</td>
+                      <td className="px-4 py-2 text-sm text-gray-900">
+                        {(employee as any)?.current_project || '-'}
                       </td>
                     </tr>
                   </tbody>

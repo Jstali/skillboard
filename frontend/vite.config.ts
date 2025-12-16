@@ -16,7 +16,9 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // Use Docker service name 'backend' for container-to-container communication
+        // Falls back to localhost for local development outside Docker
+        target: 'http://backend:2608',
         changeOrigin: true,
         secure: false,
         ws: true, // Enable WebSocket proxy
