@@ -101,6 +101,7 @@ function App() {
 }
 
 // Role-based redirect component
+// Database roles: 1=Admin, 2=HR, 3=Capability Partner, 4=Delivery Manager, 5=Line Manager, 6=Employee
 const RoleBasedRedirect: React.FC = () => {
   const user = authApi.getUser();
   if (!user) return <Navigate to="/login" replace />;

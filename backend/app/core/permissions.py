@@ -5,9 +5,9 @@ from typing import Set
 class RoleID(IntEnum):
     SYSTEM_ADMIN = 1
     HR = 2
-    LINE_MANAGER = 3        # Client-side Line Manager
-    CAPABILITY_PARTNER = 4  # Capability Partner/Owner
-    DELIVERY_MANAGER = 5    # Location-based Delivery Manager
+    CAPABILITY_PARTNER = 3  # Capability Partner/Owner
+    DELIVERY_MANAGER = 4    # Delivery Manager
+    LINE_MANAGER = 5        # Line Manager
     EMPLOYEE = 6
 
 # Fields by sensitivity level

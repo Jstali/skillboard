@@ -27,12 +27,12 @@ export const Login: React.FC = () => {
       
       // Route based on role_id
       // Database roles:
-      // 1 = admin (System Admin)
-      // 2 = hr (HR Manager)
-      // 3 = line_manager (Client-side Line Manager - bridge between client and employee)
-      // 4 = capability_partner (Capability Partner)
-      // 5 = delivery_manager (Location-based Delivery Manager - assigned to all employees by location)
-      // 6 = employee (Regular Employee)
+      // 1 = System Admin
+      // 2 = HR
+      // 3 = Capability Partner
+      // 4 = Delivery Manager
+      // 5 = Line Manager
+      // 6 = Employee
       const role = response.user.role_id;
       switch (role) {
         case 1: // System Admin
@@ -41,14 +41,14 @@ export const Login: React.FC = () => {
         case 2: // HR
           navigate('/hr/dashboard');
           break;
-        case 3: // Line Manager (Client-side)
-          navigate('/lm/dashboard');
-          break;
-        case 4: // Capability Partner
+        case 3: // Capability Partner
           navigate('/cp/dashboard');
           break;
-        case 5: // Delivery Manager (Location-based)
+        case 4: // Delivery Manager
           navigate('/dm/dashboard');
+          break;
+        case 5: // Line Manager
+          navigate('/lm/dashboard');
           break;
         default: // Employee (role_id 6 or others)
           navigate('/dashboard');

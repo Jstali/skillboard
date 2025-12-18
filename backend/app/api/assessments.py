@@ -1,6 +1,7 @@
 """API endpoints for Manager-Driven Skill Assessment.
 
 Only Line Managers (role_id=5) and Delivery Managers (role_id=4) can assess skills.
+Role IDs: 1=Admin, 2=HR, 3=Capability Partner, 4=Delivery Manager, 5=Line Manager, 6=Employee
 Employees can only view their own assessments (read-only).
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Request
