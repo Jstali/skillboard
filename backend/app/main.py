@@ -22,7 +22,7 @@ else:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db import database
-from app.api import skills, userskills, search, admin, auth, admin_users, admin_employee_skills, admin_dashboard, teams, bands, categories, learning, role_requirements, templates, admin_template_assignments, employee_assignments, skill_gap_analysis, projects, capability_owners, org_structure, level_movement, audit_logs, role_dashboard, hrms, skill_board, metrics, reconciliation, lm_dashboard, dm_dashboard
+from app.api import skills, userskills, search, admin, auth, admin_users, admin_employee_skills, admin_dashboard, teams, bands, categories, learning, role_requirements, templates, admin_template_assignments, employee_assignments, skill_gap_analysis, projects, capability_owners, org_structure, level_movement, audit_logs, role_dashboard, hrms, skill_board, metrics, reconciliation, lm_dashboard, dm_dashboard, assessments, courses
 
 app = FastAPI(
     title="Skillboard API",
@@ -33,7 +33,16 @@ app = FastAPI(
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:2607", "http://149.102.158.71:2607"],  # Vite default port and server
+    allow_origins=[
+        "http://localhost:5173",  # Vite default port
+        "http://localhost:2607",
+        "http://localhost:2608",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:2607",
+        "http://127.0.0.1:2608",
+        "http://149.102.158.71:2607",
+        "http://149.102.158.71:2608",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -82,6 +91,12 @@ app.include_router(dm_dashboard.router)
 app.include_router(skill_board.router)
 app.include_router(metrics.router)
 app.include_router(reconciliation.router)
+
+# Manager-Driven Skill Assessment
+app.include_router(assessments.router)
+
+# Course Assignment API
+app.include_router(courses.router)
 
 
 @app.on_event("startup")

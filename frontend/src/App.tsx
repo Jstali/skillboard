@@ -25,6 +25,10 @@ import LMDashboard from './pages/LMDashboard';
 import CPDashboard from './pages/CPDashboard';
 import DMDashboard from './pages/DMDashboard';
 
+// Manager Template Assessment
+import TemplateAssessmentPage from './pages/TemplateAssessment';
+import CourseAssignment from './pages/CourseAssignment';
+
 // HRMS Pre-Integration Components
 import ProjectsManagement from './pages/admin/ProjectsManagement';
 import CapabilityOwners from './pages/admin/CapabilityOwners';
@@ -70,6 +74,11 @@ function App() {
           <Route path="/admin/template-assignment" element={<PrivateRoute><TemplateAssignment /></PrivateRoute>} />
           <Route path="/admin/skill-gaps" element={<PrivateRoute><SkillGapAnalysis /></PrivateRoute>} />
           <Route path="/admin/skill-gaps/:assignmentId/details" element={<PrivateRoute><GapDetailsView /></PrivateRoute>} />
+
+          {/* Manager Template Assessment */}
+          <Route path="/manager/template-assessment" element={<PrivateRoute><TemplateAssessmentPage /></PrivateRoute>} />
+          <Route path="/template-assessment" element={<PrivateRoute><TemplateAssessmentPage /></PrivateRoute>} />
+          <Route path="/manager/course-assignment" element={<PrivateRoute><CourseAssignment /></PrivateRoute>} />
 
           {/* HRMS Test Routes */}
           <Route path="/test/hrms" element={<PrivateRoute><HRMSTestPage /></PrivateRoute>} />

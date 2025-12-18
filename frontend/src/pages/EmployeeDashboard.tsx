@@ -1,9 +1,10 @@
 /** Employee Dashboard - Unified landing page with profile, skills, and learning. */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi, bandsApi, learningApi, userSkillsApi, employeeAssignmentsApi, BandAnalysis, CourseAssignment, EmployeeSkill, Employee, AssignedTemplate } from '../services/api';
+import { authApi, bandsApi, learningApi, userSkillsApi, employeeAssignmentsApi, coursesApi, BandAnalysis, CourseAssignment, EmployeeSkill, Employee, AssignedTemplate, CourseAssignmentDetails } from '../services/api';
 import { AssignedTemplateCard } from '../components/AssignedTemplateCard';
 import { TemplateFillModal } from '../components/TemplateFillModal';
+import { EmployeeCourseAssignments } from '../components/EmployeeCourseAssignments';
 import { Button } from '../components/Button';
 import { PageHeader } from '../components/PageHeader';
 import { User, BookOpen, Target, ChevronDown, ChevronRight, Plus, X, Search, Award, GraduationCap } from 'lucide-react';
@@ -45,6 +46,9 @@ export const EmployeeDashboard: React.FC = () => {
   const [interestedSkillsExpanded, setInterestedSkillsExpanded] = useState(false);
   const [skillsProficiencyExpanded, setSkillsProficiencyExpanded] = useState(true); // Expanded by default
   const [templateAssignments, setTemplateAssignments] = useState<any[]>([]);
+  // Manager-assigned courses state
+  const [managerCourses, setManagerCourses] = useState<CourseAssignmentDetails[]>([]);
+  const [myCoursesExpanded, setMyCoursesExpanded] = useState(true);
   const navigate = useNavigate();
   const user = authApi.getUser();
 
@@ -77,6 +81,15 @@ export const EmployeeDashboard: React.FC = () => {
         } catch (error) {
           console.log('Could not load template assignments:', error);
           setAssignedTemplates([]);
+        }
+
+        // Load manager-assigned courses
+        try {
+          const coursesData = await coursesApi.getMyAssignments();
+          setManagerCourses(coursesData);
+        } catch (error) {
+          console.log('Could not load manager courses:', error);
+          setManagerCourses([]);
         }
 
         // Load existing plans and dates from notes
@@ -731,6 +744,42 @@ export const EmployeeDashboard: React.FC = () => {
               </div>
             </div>
 
+            {/* My Courses Section - Manager Assigned Courses */}
+            {managerCourses.length > 0 && (
+              <div className="bg-white rounded-md shadow-sm overflow-hidden mb-4">
+                <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                  <button
+                    onClick={() => setMyCoursesExpanded(!myCoursesExpanded)}
+                    className="flex items-center gap-2 flex-1"
+                  >
+                    <GraduationCap className="w-5 h-5 text-blue-600" />
+                    <h3 className="text-lg font-bold text-gray-900">My Courses</h3>
+                    <span className="text-sm font-normal text-gray-500">
+                      ({managerCourses.filter(c => c.status !== 'Completed').length} pending)
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setMyCoursesExpanded(!myCoursesExpanded)}
+                    className="p-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-5 h-5 text-gray-500 transition-transform ${myCoursesExpanded ? 'rotate-180' : ''}`}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                </div>
+
+                {myCoursesExpanded && (
+                  <div className="px-4 pb-4">
+                    <EmployeeCourseAssignments 
+                      compact={true} 
+                      maxItems={5}
+                      onRefresh={loadData}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Assigned Skills Section */}
             <div className="bg-white rounded-md shadow-sm p-4 mb-4">
               <div className="flex justify-between items-center mb-4">
@@ -1383,71 +1432,78 @@ export const EmployeeDashboard: React.FC = () => {
         {/* Mandatory Learning Tab */}
         {activeTab === 'learning' && (
           <div className="space-y-6">
-            {pendingCourses > 0 && (
-              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm text-yellow-700">
-                      You have <strong>{pendingCourses}</strong> pending course{pendingCourses !== 1 ? 's' : ''} to complete.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Manager-Assigned Courses Section */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <GraduationCap className="w-6 h-6 text-blue-600" />
+                Manager-Assigned Courses
+              </h2>
+              <EmployeeCourseAssignments onRefresh={loadData} />
+            </div>
 
-            {loading ? (
-              <div className="text-center py-12 text-gray-500">Loading courses...</div>
-            ) : assignments.length === 0 ? (
-              <div className="text-center py-12 text-gray-500 bg-white rounded-lg">
-                No courses assigned yet.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {assignments.map((assignment) => (
-                  <div key={assignment.id} className="bg-white rounded-md shadow-sm p-4 border border-gray-200">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="text-base font-bold text-gray-900">{assignment.course_title}</h3>
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(assignment.status)}`}>
-                        {assignment.status}
-                      </span>
-                    </div>
-
-                    {assignment.due_date && (
-                      <p className="text-sm text-gray-600 mb-3">
-                        Due: {new Date(assignment.due_date).toLocaleDateString()}
-                      </p>
-                    )}
-
-                    {assignment.status === 'Not Started' && (
-                      <button
-                        onClick={() => navigate('/learning')}
-                        className="w-full px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
-                      >
-                        Start Course
-                      </button>
-                    )}
-
-                    {assignment.status === 'In Progress' && (
-                      <button
-                        onClick={() => navigate('/learning')}
-                        className="w-full px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
-                      >
-                        Continue Learning
-                      </button>
-                    )}
-
-                    {assignment.status === 'Completed' && (
-                      <div className="text-sm text-green-600 font-medium">
-                        ✓ Completed on {assignment.completed_at ? new Date(assignment.completed_at).toLocaleDateString() : 'N/A'}
+            {/* Legacy Mandatory Courses Section */}
+            {assignments.length > 0 && (
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Mandatory Learning</h2>
+                {pendingCourses > 0 && (
+                  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
                       </div>
-                    )}
+                      <div className="ml-3">
+                        <p className="text-sm text-yellow-700">
+                          You have <strong>{pendingCourses}</strong> pending course{pendingCourses !== 1 ? 's' : ''} to complete.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                ))}
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {assignments.map((assignment) => (
+                    <div key={assignment.id} className="bg-gray-50 rounded-md p-4 border border-gray-200">
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="text-base font-bold text-gray-900">{assignment.course_title}</h3>
+                        <span className={`px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(assignment.status)}`}>
+                          {assignment.status}
+                        </span>
+                      </div>
+
+                      {assignment.due_date && (
+                        <p className="text-sm text-gray-600 mb-3">
+                          Due: {new Date(assignment.due_date).toLocaleDateString()}
+                        </p>
+                      )}
+
+                      {assignment.status === 'Not Started' && (
+                        <button
+                          onClick={() => navigate('/learning')}
+                          className="w-full px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+                        >
+                          Start Course
+                        </button>
+                      )}
+
+                      {assignment.status === 'In Progress' && (
+                        <button
+                          onClick={() => navigate('/learning')}
+                          className="w-full px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
+                        >
+                          Continue Learning
+                        </button>
+                      )}
+
+                      {assignment.status === 'Completed' && (
+                        <div className="text-sm text-green-600 font-medium">
+                          ✓ Completed on {assignment.completed_at ? new Date(assignment.completed_at).toLocaleDateString() : 'N/A'}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

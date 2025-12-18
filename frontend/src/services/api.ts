@@ -116,9 +116,19 @@ export const skillsApi = {
     const response = await api.get<Skill>(`/api/skills/${id}`);
     return response.data;
   },
-  create: async (skill: { name: string; description?: string; category?: string }, addToCategory?: string): Promise<Skill> => {
+  create: async (skill: { name: string; description?: string; category?: string; pathway?: string }, addToCategory?: string): Promise<Skill> => {
     const params = addToCategory ? { add_to_category: addToCategory } : {};
     const response = await api.post<Skill>('/api/skills/', skill, { params });
+    return response.data;
+  },
+  // Get skills grouped by pathway and category
+  getGrouped: async (): Promise<Record<string, Record<string, Skill[]>>> => {
+    const response = await api.get<Record<string, Record<string, Skill[]>>>('/api/skills/grouped');
+    return response.data;
+  },
+  // Get list of pathways with categories and counts
+  getPathways: async (): Promise<Array<{ name: string; categories: Record<string, number>; total_skills: number }>> => {
+    const response = await api.get('/api/skills/pathways');
     return response.data;
   },
 };
@@ -1330,6 +1340,216 @@ export const reconciliationApi = {
       params: { format },
       responseType: 'blob'
     });
+    return response.data;
+  },
+};
+
+
+// ============================================================================
+// TEMPLATE ASSESSMENT TYPES & APIs (Manager-Driven)
+// ============================================================================
+
+// Template Assessment Types
+export interface TemplateListItem {
+  id: number;
+  template_name: string;
+  file_name: string;
+  created_at: string;
+  skill_count: number;
+}
+
+export interface TemplateSkillView {
+  skill_id: number;
+  skill_name: string;
+  skill_category?: string;
+  required_level?: string;
+  current_level?: string;
+  is_assessed: boolean;
+}
+
+export interface TemplateAssessmentView {
+  template_id: number;
+  template_name: string;
+  employee_id: number;
+  employee_name: string;
+  skills: TemplateSkillView[];
+  total_skills: number;
+  assessed_skills: number;
+}
+
+export interface SkillAssessmentInput {
+  skill_id: number;
+  level: string;
+  comments?: string;
+}
+
+export interface TemplateAssessmentResult {
+  template_id: number;
+  employee_id: number;
+  assessor_id: number;
+  skills_assessed: number;
+  total_skills: number;
+  log_id: number;
+  assessed_at: string;
+}
+
+export interface AssessmentProgress {
+  template_id: number;
+  employee_id: number;
+  total_skills: number;
+  assessed_skills: number;
+  completion_percentage: number;
+}
+
+export interface AssessableEmployee {
+  id: number;
+  employee_id: string;
+  name: string;
+  band?: string;
+  pathway?: string;
+  department?: string;
+}
+
+// Template Assessment API
+export const templateAssessmentApi = {
+  // Get list of available templates for assessment
+  getTemplates: async (): Promise<TemplateListItem[]> => {
+    const response = await api.get<TemplateListItem[]>('/api/assessments/templates');
+    return response.data;
+  },
+
+  // Get assessable employees for the current manager
+  getAssessableEmployees: async (): Promise<AssessableEmployee[]> => {
+    const response = await api.get<AssessableEmployee[]>('/api/assessments/assessable-employees');
+    return response.data;
+  },
+
+  // Get template skills with employee's current levels
+  getTemplateForAssessment: async (templateId: number, employeeId: number): Promise<TemplateAssessmentView> => {
+    const response = await api.get<TemplateAssessmentView>(
+      `/api/assessments/template/${templateId}/employee/${employeeId}`
+    );
+    return response.data;
+  },
+
+  // Submit template assessments
+  submitTemplateAssessment: async (
+    templateId: number,
+    employeeId: number,
+    assessments: SkillAssessmentInput[]
+  ): Promise<TemplateAssessmentResult> => {
+    const response = await api.post<TemplateAssessmentResult>(
+      `/api/assessments/template/${templateId}/employee/${employeeId}`,
+      { assessments }
+    );
+    return response.data;
+  },
+
+  // Get assessment progress for a template/employee
+  getAssessmentProgress: async (templateId: number, employeeId: number): Promise<AssessmentProgress> => {
+    const response = await api.get<AssessmentProgress>(
+      `/api/assessments/template/${templateId}/employee/${employeeId}/progress`
+    );
+    return response.data;
+  },
+};
+
+
+// ============================================================================
+// COURSE ASSIGNMENT TYPES & APIs (Manager-Driven)
+// ============================================================================
+
+// Course Assignment Types
+export interface CourseDetails {
+  id: number;
+  title: string;
+  description?: string;
+  skill_id?: number;
+  skill_name?: string;
+  external_url?: string;
+  is_mandatory: boolean;
+  created_at?: string;
+}
+
+export interface CourseAssignmentDetails {
+  id: number;
+  course_id: number;
+  course_title: string;
+  course_description?: string;
+  course_url?: string;
+  employee_id: number;
+  employee_name: string;
+  assigned_by?: number;
+  assigner_name?: string;
+  assigned_at: string;
+  due_date?: string;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+  certificate_url?: string;
+  notes?: string;
+  skill_id?: number;
+  skill_name?: string;
+}
+
+export interface CourseAssignRequest {
+  course_id: number;
+  employee_id: number;
+  due_date?: string;
+  notes?: string;
+  skill_id?: number;
+}
+
+// Course Assignment API
+export const coursesApi = {
+  // Get all courses with optional filtering
+  getCourses: async (params?: {
+    skill_id?: number;
+    mandatory?: boolean;
+    search?: string;
+  }): Promise<CourseDetails[]> => {
+    const response = await api.get<CourseDetails[]>('/api/courses', { params });
+    return response.data;
+  },
+
+  // Get courses for a specific skill
+  getCoursesForSkill: async (skillId: number): Promise<CourseDetails[]> => {
+    const response = await api.get<CourseDetails[]>(`/api/courses/skill/${skillId}`);
+    return response.data;
+  },
+
+  // Assign a course to an employee
+  assignCourse: async (request: CourseAssignRequest): Promise<CourseAssignmentDetails> => {
+    const response = await api.post<CourseAssignmentDetails>('/api/courses/assign', request);
+    return response.data;
+  },
+
+  // Get assignments made by the current manager
+  getManagerAssignments: async (params?: {
+    status_filter?: string;
+    employee_id?: number;
+    course_id?: number;
+  }): Promise<CourseAssignmentDetails[]> => {
+    const response = await api.get<CourseAssignmentDetails[]>('/api/courses/assignments/manager', { params });
+    return response.data;
+  },
+
+  // Get assignments for the current employee
+  getMyAssignments: async (): Promise<CourseAssignmentDetails[]> => {
+    const response = await api.get<CourseAssignmentDetails[]>('/api/courses/assignments/me');
+    return response.data;
+  },
+
+  // Update assignment status
+  updateAssignmentStatus: async (
+    assignmentId: number,
+    status: string,
+    certificateUrl?: string
+  ): Promise<CourseAssignmentDetails> => {
+    const response = await api.put<CourseAssignmentDetails>(
+      `/api/courses/assignments/${assignmentId}/status`,
+      { status, certificate_url: certificateUrl }
+    );
     return response.data;
   },
 };

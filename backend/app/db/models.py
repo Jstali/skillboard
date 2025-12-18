@@ -24,7 +24,8 @@ class Skill(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
     description = Column(String, nullable=True)
-    category = Column(String, nullable=True, index=True)  # Category like "Programming", "SAP", "Cloud", "DevOps"
+    pathway = Column(String, nullable=True, index=True)  # Top-level pathway: Consulting, Technical, Legal, etc.
+    category = Column(String, nullable=True, index=True)  # Category within pathway: Core Legal Skills, Advisory, etc.
 
     # Relationship to employee skills
     employee_skills = relationship("EmployeeSkill", back_populates="skill")
@@ -81,6 +82,11 @@ class Employee(Base):
     location_id = Column(String, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     hrms_last_sync = Column(DateTime, nullable=True)  # Last sync timestamp from HRMS
+    
+    # Manager-Driven Skill Assessment fields
+    pathway = Column(String(100), nullable=True, index=True)  # Career pathway: Technical, SAP, Cloud, Data, etc.
+    band_locked_at = Column(DateTime, nullable=True)  # Timestamp when band was last set via Level Movement
+    pathway_locked_at = Column(DateTime, nullable=True)  # Timestamp when pathway was last set via Level Movement
     
     # Relationship to employee skills
     employee_skills = relationship("EmployeeSkill", back_populates="employee", cascade="all, delete-orphan")
@@ -223,10 +229,12 @@ class CourseAssignment(Base):
     completed_at = Column(DateTime, nullable=True)
     certificate_url = Column(String, nullable=True)  # Uploaded certificate file path/URL
     notes = Column(String, nullable=True)
+    skill_id = Column(Integer, ForeignKey("skills.id"), nullable=True)  # Skill this course was assigned to address (for gap analysis linkage)
 
     # Relationships
     course = relationship("Course", back_populates="assignments")
     employee = relationship("Employee")
+    skill = relationship("Skill")  # Link to skill for gap analysis
 
     # Unique constraint: one assignment per employee-course pair
     __table_args__ = (
@@ -318,6 +326,28 @@ class SkillGapResult(Base):
     __table_args__ = (
         UniqueConstraint("assignment_id", "skill_id", name="uq_assignment_skill_gap"),
     )
+
+
+class TemplateAssessmentLog(Base):
+    """Audit trail for template-based skill assessments by managers.
+    
+    Records when a manager assesses an employee using a skill template,
+    tracking the template used, assessor, and assessment statistics.
+    """
+    __tablename__ = "template_assessment_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(Integer, ForeignKey("skill_templates.id"), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    assessor_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    skills_assessed = Column(Integer, nullable=False)
+    total_skills = Column(Integer, nullable=False)
+    assessed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    template = relationship("SkillTemplate")
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    assessor = relationship("Employee", foreign_keys=[assessor_id])
 
 
 # ============================================================================
@@ -645,3 +675,96 @@ class AccessLog(Base):
     
     # Relationships
     user = relationship("User")
+
+
+# ============================================================================
+# Manager-Driven Skill Assessment Models
+# ============================================================================
+
+class AssessmentTypeEnum(str, enum.Enum):
+    """Types of skill assessments."""
+    BASELINE = "baseline"  # System-generated based on band
+    MANAGER = "manager"    # Assessed by Line Manager or Delivery Manager
+    LEGACY = "legacy"      # Migrated from old self-service system
+
+
+class AssessorRoleEnum(str, enum.Enum):
+    """Roles that can assess skills."""
+    SYSTEM = "SYSTEM"
+    LINE_MANAGER = "LINE_MANAGER"
+    DELIVERY_MANAGER = "DELIVERY_MANAGER"
+    LEGACY_SELF_REPORTED = "LEGACY_SELF_REPORTED"
+
+
+class SkillAssessment(Base):
+    """Manager-assessed skill levels for employees.
+    
+    Replaces self-service skill ratings. Only managers can create/update assessments.
+    """
+    __tablename__ = "skill_assessments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    skill_id = Column(Integer, ForeignKey("skills.id", ondelete="CASCADE"), nullable=False)
+    level = Column(SQLEnum(RatingEnum, native_enum=False, length=50), nullable=False)
+    assessment_type = Column(SQLEnum(AssessmentTypeEnum, native_enum=False, length=20), nullable=False)
+    assessor_id = Column(Integer, ForeignKey("employees.id"), nullable=True)  # NULL for SYSTEM
+    assessor_role = Column(SQLEnum(AssessorRoleEnum, native_enum=False, length=50), nullable=False)
+    comments = Column(Text, nullable=True)
+    assessed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    skill = relationship("Skill")
+    assessor = relationship("Employee", foreign_keys=[assessor_id])
+
+    # Unique constraint: one assessment per employee-skill pair
+    __table_args__ = (
+        UniqueConstraint("employee_id", "skill_id", name="uq_skill_assessment_employee_skill"),
+    )
+
+
+class AssessmentHistory(Base):
+    """Immutable audit trail of all skill assessment changes.
+    
+    Records cannot be modified or deleted (enforced by database triggers).
+    """
+    __tablename__ = "assessment_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    skill_id = Column(Integer, ForeignKey("skills.id", ondelete="CASCADE"), nullable=False)
+    previous_level = Column(SQLEnum(RatingEnum, native_enum=False, length=50), nullable=True)  # NULL for first assessment
+    new_level = Column(SQLEnum(RatingEnum, native_enum=False, length=50), nullable=False)
+    assessment_type = Column(SQLEnum(AssessmentTypeEnum, native_enum=False, length=20), nullable=False)
+    assessor_id = Column(Integer, ForeignKey("employees.id"), nullable=True)  # NULL for SYSTEM
+    assessor_role = Column(SQLEnum(AssessorRoleEnum, native_enum=False, length=50), nullable=False)
+    comments = Column(Text, nullable=True)
+    assessed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    skill = relationship("Skill")
+    assessor = relationship("Employee", foreign_keys=[assessor_id])
+
+
+class PathwaySkill(Base):
+    """Defines which skills belong to each career pathway."""
+    __tablename__ = "pathway_skills"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pathway = Column(String(100), nullable=False, index=True)  # Technical, SAP, Cloud, Data, etc.
+    skill_id = Column(Integer, ForeignKey("skills.id", ondelete="CASCADE"), nullable=False)
+    is_core = Column(Boolean, default=True, nullable=False)  # Core vs optional skill
+    display_order = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    skill = relationship("Skill")
+
+    # Unique constraint: one entry per pathway-skill pair
+    __table_args__ = (
+        UniqueConstraint("pathway", "skill_id", name="uq_pathway_skill"),
+    )

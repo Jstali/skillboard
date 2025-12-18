@@ -166,54 +166,19 @@ def get_employee_skills(employee_id: str, db: Session = Depends(database.get_db)
     return crud.get_employee_skills_by_employee_id(db, employee.id)
 
 
-@router.post("/me", response_model=EmployeeSkill)
+@router.post("/me", status_code=410)
 def create_my_skill(
-    employee_skill: EmployeeSkillCreateMe,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(database.get_db),
 ):
-    """Create or update a skill for the current logged-in user."""
-    if not current_user.employee_id:
-        raise HTTPException(status_code=400, detail="User is not linked to an employee")
+    """
+    DEPRECATED: Self-service skill editing has been disabled.
     
-    # Use current user's employee_id
-    employee = crud.get_employee_by_id(db, current_user.employee_id)
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    
-    # Get or create skill (with optional category)
-    skill = crud.upsert_skill(db, employee_skill.skill_name, category=employee_skill.skill_category)
-    
-    # Validate skill is in employee's category template if category is set and not a custom skill
-    is_custom = employee_skill.is_custom or False
-    if employee.category and not is_custom:
-        from app.db.models import CategorySkillTemplate
-        template_entry = (
-            db.query(CategorySkillTemplate)
-            .filter(
-                CategorySkillTemplate.category == employee.category,
-                CategorySkillTemplate.skill_id == skill.id
-            )
-            .first()
-        )
-        if not template_entry:
-            # Skill not in template - mark as custom
-            is_custom = True
-    
-    # Create or update employee-skill mapping
-    # If is_interested is True, rating should be None
-    # If is_interested is False, rating is required (default to Beginner if not provided)
-    rating = None if employee_skill.is_interested else (employee_skill.rating or RatingEnum.BEGINNER)
-    
-    return crud.upsert_employee_skill(
-        db,
-        employee.id,
-        skill.id,
-        rating,
-        employee_skill.years_experience,
-        is_interested=employee_skill.is_interested or False,
-        notes=employee_skill.notes,
-        is_custom=is_custom,
+    Skills are now assessed by Line Managers and Delivery Managers only.
+    Use GET /api/assessments/employee/{employee_id} to view your assessed skills.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail="Self-service skill editing has been disabled. Skills are now assessed by managers only."
     )
 
 

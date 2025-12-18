@@ -1,7 +1,7 @@
 /** Template Management Component for Skills Tab */
 import React, { useState, useEffect, useRef } from 'react';
 import { SearchableSelect } from './SearchableSelect';
-import { api, templatesApi, SkillTemplate, TemplateUploadResponse } from '../services/api';
+import { api, templatesApi, skillsApi, SkillTemplate, TemplateUploadResponse } from '../services/api';
 
 interface TemplateManagementProps {
     onUploadSuccess?: (result: TemplateUploadResponse) => void;
@@ -49,13 +49,46 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
     const [uploadName, setUploadName] = useState('');
     const [showUploadNameModal, setShowUploadNameModal] = useState(false);
 
+    // Skills with requirements upload state
+    const [uploadingSkills, setUploadingSkills] = useState(false);
+    const [showSkillsUploadModal, setShowSkillsUploadModal] = useState(false);
+    const [skillsUploadFile, setSkillsUploadFile] = useState<File | null>(null);
+    const [deleteExistingSkills, setDeleteExistingSkills] = useState(false);
+    const [skillsPathway, setSkillsPathway] = useState('');
+
+    // Skills display state
+    const [skillsGrouped, setSkillsGrouped] = useState<Record<string, Record<string, any[]>>>({});
+    const [loadingSkills, setLoadingSkills] = useState(false);
+    const [expandedPathways, setExpandedPathways] = useState<Record<string, boolean>>({});
+    const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const skillsFileInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
         loadTemplates();
         loadEmployees();
         loadSampleTemplates();
+        loadSkills();
     }, []);
+
+    const loadSkills = async () => {
+        setLoadingSkills(true);
+        try {
+            const grouped = await skillsApi.getGrouped();
+            setSkillsGrouped(grouped);
+            // Auto-expand all pathways by default
+            const pathwayExpanded: Record<string, boolean> = {};
+            Object.keys(grouped).forEach(pathway => {
+                pathwayExpanded[pathway] = true;
+            });
+            setExpandedPathways(pathwayExpanded);
+        } catch (error) {
+            console.error('Failed to load skills:', error);
+        } finally {
+            setLoadingSkills(false);
+        }
+    };
 
     const loadTemplates = async () => {
         console.log('DEBUG: loadTemplates called');
@@ -104,6 +137,62 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
         // Reset input immediately
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
+        }
+    };
+
+    const handleSkillsFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setSkillsUploadFile(file);
+        setDeleteExistingSkills(false);
+        setShowSkillsUploadModal(true);
+
+        // Reset input immediately
+        if (skillsFileInputRef.current) {
+            skillsFileInputRef.current.value = '';
+        }
+    };
+
+    const handleSkillsUploadConfirm = async () => {
+        if (!skillsUploadFile) return;
+
+        setUploadingSkills(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', skillsUploadFile);
+
+            // Build query params
+            const params = new URLSearchParams();
+            params.append('delete_existing', String(deleteExistingSkills));
+            if (skillsPathway.trim()) {
+                params.append('pathway', skillsPathway.trim());
+            }
+
+            const response = await api.post(
+                `/api/admin/upload-skills-with-requirements?${params.toString()}`,
+                formData,
+                { headers: { 'Content-Type': 'multipart/form-data' } }
+            );
+
+            onUploadSuccess?.({
+                message: response.data.message,
+                rows_processed: response.data.rows_processed,
+                rows_created: response.data.rows_created,
+                rows_updated: response.data.rows_updated,
+            });
+
+            // Reload skills to show the newly imported ones
+            await loadSkills();
+
+            setShowSkillsUploadModal(false);
+            setSkillsUploadFile(null);
+            setSkillsPathway('');
+        } catch (error: any) {
+            const errorMessage = error.response?.data?.detail || 'Failed to import skills';
+            onUploadError?.(errorMessage);
+        } finally {
+            setUploadingSkills(false);
         }
     };
 
@@ -374,8 +463,167 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
         }
     };
 
+    const togglePathway = (pathway: string) => {
+        setExpandedPathways(prev => ({
+            ...prev,
+            [pathway]: !prev[pathway]
+        }));
+    };
+
+    const toggleCategory = (key: string) => {
+        setExpandedCategories(prev => ({
+            ...prev,
+            [key]: !prev[key]
+        }));
+    };
+
     return (
         <>
+            {/* Skills Display Section - Grouped by Pathway and Category */}
+            {Object.keys(skillsGrouped).length > 0 && (
+                <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800">Skills Library</h2>
+                            <p className="text-sm text-gray-600 mt-1">
+                                Skills organized by Pathway → Category → Skills
+                            </p>
+                        </div>
+                        <button
+                            onClick={loadSkills}
+                            disabled={loadingSkills}
+                            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium flex items-center gap-2"
+                        >
+                            {loadingSkills ? (
+                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                </svg>
+                            )}
+                            Refresh
+                        </button>
+                    </div>
+
+                    {loadingSkills ? (
+                        <div className="text-center py-8 text-gray-500">Loading skills...</div>
+                    ) : (
+                        <div className="space-y-4">
+                            {Object.entries(skillsGrouped).map(([pathway, categories]) => {
+                                const totalSkills = Object.values(categories).reduce((sum, skills) => sum + skills.length, 0);
+                                const isPathwayExpanded = expandedPathways[pathway] !== false;
+
+                                return (
+                                    <div key={pathway} className="border border-gray-200 rounded-lg overflow-hidden">
+                                        {/* Pathway Header */}
+                                        <div
+                                            className="bg-gradient-to-r from-purple-50 to-indigo-50 px-6 py-4 cursor-pointer hover:from-purple-100 hover:to-indigo-100 transition-colors flex items-center justify-between"
+                                            onClick={() => togglePathway(pathway)}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-purple-100 rounded-lg">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-purple-600">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+                                                    </svg>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-gray-800">{pathway}</h3>
+                                                    <p className="text-sm text-gray-500">
+                                                        {Object.keys(categories).length} categories • {totalSkills} skills
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <svg
+                                                className={`w-5 h-5 text-gray-500 transition-transform ${isPathwayExpanded ? 'rotate-180' : ''}`}
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </div>
+
+                                        {/* Categories */}
+                                        {isPathwayExpanded && (
+                                            <div className="divide-y divide-gray-100">
+                                                {Object.entries(categories).map(([category, skills]) => {
+                                                    const categoryKey = `${pathway}-${category}`;
+                                                    const isCategoryExpanded = expandedCategories[categoryKey] !== false;
+
+                                                    return (
+                                                        <div key={category}>
+                                                            {/* Category Header */}
+                                                            <div
+                                                                className="bg-gray-50 px-6 py-3 cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between"
+                                                                onClick={() => toggleCategory(categoryKey)}
+                                                            >
+                                                                <div className="flex items-center gap-2">
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-gray-400">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                                                                    </svg>
+                                                                    <span className="font-semibold text-gray-700">{category}</span>
+                                                                    <span className="text-sm text-gray-500">({skills.length} skills)</span>
+                                                                </div>
+                                                                <svg
+                                                                    className={`w-4 h-4 text-gray-400 transition-transform ${isCategoryExpanded ? 'rotate-180' : ''}`}
+                                                                    fill="none"
+                                                                    stroke="currentColor"
+                                                                    viewBox="0 0 24 24"
+                                                                >
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                                </svg>
+                                                            </div>
+
+                                                            {/* Skills List */}
+                                                            {isCategoryExpanded && (
+                                                                <div className="bg-white">
+                                                                    <table className="min-w-full">
+                                                                        <thead className="bg-gray-50 border-b border-gray-100">
+                                                                            <tr>
+                                                                                <th className="px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Skill Name</th>
+                                                                                <th className="px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody className="divide-y divide-gray-50">
+                                                                            {skills.map((skill: any) => (
+                                                                                <tr key={skill.id} className="hover:bg-gray-50">
+                                                                                    <td className="px-6 py-3 text-sm font-medium text-gray-900">{skill.name}</td>
+                                                                                    <td className="px-6 py-3 text-sm text-gray-500">{skill.description || '-'}</td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Empty State when no skills */}
+            {!loadingSkills && Object.keys(skillsGrouped).length === 0 && (
+                <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <div className="text-center py-8">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-gray-300 mx-auto mb-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                        </svg>
+                        <h3 className="text-lg font-semibold text-gray-700 mb-2">No Skills Found</h3>
+                        <p className="text-gray-500 mb-4">Import skills using the "Import Skills with Requirements" button below.</p>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white rounded-lg shadow-md p-6 mt-6">
                 {/* Header */}
                 <div className="flex justify-between items-center mb-6">
@@ -410,6 +658,29 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
                             </>
                         )}
                     </button>
+                    <button
+                        onClick={() => skillsFileInputRef.current?.click()}
+                        disabled={uploadingSkills}
+                        className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center gap-2 shadow-sm"
+                        title="Upload skills with band requirements (A, B, C, L1, L2)"
+                    >
+                        {uploadingSkills ? (
+                            <>
+                                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Importing Skills...
+                            </>
+                        ) : (
+                            <>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Import Skills with Requirements
+                            </>
+                        )}
+                    </button>
                 </div>
 
                 {/* Templates Header */}
@@ -425,6 +696,14 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
                     type="file"
                     accept=".xlsx,.csv,.ods"
                     onChange={handleFileUpload}
+                    className="hidden"
+                />
+                {/* Hidden Input for Skills with Requirements Upload */}
+                <input
+                    ref={skillsFileInputRef}
+                    type="file"
+                    accept=".xlsx,.csv"
+                    onChange={handleSkillsFileSelect}
                     className="hidden"
                 />
 
@@ -1518,6 +1797,96 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Skills with Requirements Upload Modal */}
+            {showSkillsUploadModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                        <h3 className="text-xl font-bold text-gray-800 mb-4">Import Skills with Band Requirements</h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Import skills organized by Pathway → Category → Skills hierarchy.
+                        </p>
+
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                            <h4 className="font-medium text-blue-800 mb-2">Expected Excel Format:</h4>
+                            <ul className="text-sm text-blue-700 list-disc list-inside space-y-1">
+                                <li>First column: Skill name</li>
+                                <li>Columns A, B, C, L1, L2: Rating requirements</li>
+                                <li>Category headers: "1. Category Name" format</li>
+                                <li>Ratings: Beginner, Developing, Intermediate, Advanced, Expert</li>
+                            </ul>
+                        </div>
+
+                        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                            <p className="text-sm text-gray-700">
+                                <strong>File:</strong> {skillsUploadFile?.name}
+                            </p>
+                        </div>
+
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Pathway Name <span className="text-gray-400">(e.g., Consulting, Technical, Legal)</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={skillsPathway}
+                                onChange={(e) => setSkillsPathway(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                                placeholder="Enter pathway name..."
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                                This groups all skills under a top-level pathway (Pathway → Category → Skills)
+                            </p>
+                        </div>
+
+                        <div className="mb-6">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={deleteExistingSkills}
+                                    onChange={(e) => setDeleteExistingSkills(e.target.checked)}
+                                    className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                    Delete all existing skills before import
+                                </span>
+                            </label>
+                            {deleteExistingSkills && (
+                                <p className="text-xs text-red-600 mt-1 ml-6">
+                                    ⚠️ This will permanently delete all existing skills and their mappings!
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowSkillsUploadModal(false);
+                                    setSkillsUploadFile(null);
+                                    setSkillsPathway('');
+                                }}
+                                className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                                disabled={uploadingSkills}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSkillsUploadConfirm}
+                                disabled={uploadingSkills}
+                                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {uploadingSkills && (
+                                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                )}
+                                Import Skills
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

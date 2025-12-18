@@ -11,6 +11,7 @@ class SkillBase(BaseModel):
     name: str
     description: Optional[str] = None
     category: Optional[str] = None
+    pathway: Optional[str] = None
 
 
 class SkillCreate(SkillBase):

@@ -11,6 +11,10 @@ class Settings:
     Uses properties to read from environment at runtime, allowing .env to be loaded first.
     """
     
+    # Cache for encryption key to ensure consistency
+    _encryption_key: Optional[str] = None
+    _fernet_instance: Optional[Fernet] = None
+    
     @property
     def DATABASE_URL(self) -> str:
         return os.getenv("DATABASE_URL", "postgresql://user:password@localhost/skillboard")
@@ -43,12 +47,22 @@ class Settings:
     
     @property
     def ENCRYPTION_KEY(self) -> str:
-        return os.getenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
+        """Get encryption key, generating and caching if not set."""
+        if Settings._encryption_key is None:
+            env_key = os.getenv("ENCRYPTION_KEY")
+            if env_key:
+                Settings._encryption_key = env_key
+            else:
+                # Generate and cache a key for the session
+                Settings._encryption_key = Fernet.generate_key().decode()
+        return Settings._encryption_key
     
     @property
     def fernet(self) -> Fernet:
-        """Get Fernet encryption instance."""
-        return Fernet(self.ENCRYPTION_KEY.encode())
+        """Get Fernet encryption instance, cached for consistency."""
+        if Settings._fernet_instance is None:
+            Settings._fernet_instance = Fernet(self.ENCRYPTION_KEY.encode())
+        return Settings._fernet_instance
     
     def encrypt_value(self, value: str) -> str:
         """Encrypt a sensitive value."""

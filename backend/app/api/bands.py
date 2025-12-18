@@ -295,12 +295,18 @@ def get_employee_band_analysis(
             print(f"Error parsing template {template.template_name}: {e}")
 
     # --- 2. Role Requirements (Database) ---
-    role_requirements = (
+    # Filter by employee's pathway if they have one
+    role_requirements_query = (
         db.query(RoleRequirement, Skill)
         .join(Skill, RoleRequirement.skill_id == Skill.id)
         .filter(RoleRequirement.band == band)
-        .all()
     )
+    
+    # If employee has a pathway, only get requirements for skills in that pathway
+    if employee and employee.pathway:
+        role_requirements_query = role_requirements_query.filter(Skill.pathway == employee.pathway)
+    
+    role_requirements = role_requirements_query.all()
     
     # Create a map of skill_id -> requirement
     role_req_map = {

@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, api } from '../services/api';
 import { PageHeader } from '../components/PageHeader';
-import { Users, Briefcase, Target, Calendar, RefreshCw, MapPin, AlertCircle } from 'lucide-react';
+import { ManagerCourseAssignments } from '../components/ManagerCourseAssignments';
+import { Users, Briefcase, Target, Calendar, RefreshCw, MapPin, AlertCircle, BookOpen } from 'lucide-react';
 
 interface TeamMember {
   id: number;
@@ -41,7 +42,7 @@ export const DMDashboard: React.FC = () => {
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
-  const [activeTab, setActiveTab] = useState<'team' | 'projects' | 'staffing'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'projects' | 'courses' | 'staffing'>('team');
   const navigate = useNavigate();
   const user = authApi.getUser();
 
@@ -145,6 +146,9 @@ export const DMDashboard: React.FC = () => {
           <TabButton active={activeTab === 'projects'} onClick={() => setActiveTab('projects')}>
             <Briefcase className="w-4 h-4 mr-2" /> Projects
           </TabButton>
+          <TabButton active={activeTab === 'courses'} onClick={() => setActiveTab('courses')}>
+            <BookOpen className="w-4 h-4 mr-2" /> Course Assignments
+          </TabButton>
           <TabButton active={activeTab === 'staffing'} onClick={() => setActiveTab('staffing')}>
             <Calendar className="w-4 h-4 mr-2" /> Staffing
           </TabButton>
@@ -247,6 +251,13 @@ export const DMDashboard: React.FC = () => {
                 </tbody>
               </table>
             )}
+          </div>
+        )}
+
+        {/* Course Assignments Tab */}
+        {activeTab === 'courses' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <ManagerCourseAssignments />
           </div>
         )}
 

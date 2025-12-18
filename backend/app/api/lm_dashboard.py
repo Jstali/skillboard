@@ -27,6 +27,7 @@ class TeamMemberResponse(BaseModel):
     employee_id: str
     name: str
     capability: Optional[str] = None
+    pathway: Optional[str] = None  # For skill filtering
     band: Optional[str] = None
     skills_count: int = 0
     source: str = "local"  # "local", "hrms", or "project"
@@ -81,6 +82,7 @@ async def get_direct_reports(
                 employee_id=emp.employee_id,
                 name=emp.name,
                 capability=emp.capability or emp.home_capability,
+                pathway=emp.pathway,
                 band=emp.band,
                 skills_count=skills_count,
                 source="local",
@@ -103,6 +105,7 @@ async def get_direct_reports(
                     employee_id=emp.employee_id,
                     name=emp.name,
                     capability=emp.capability or emp.home_capability,
+                    pathway=emp.pathway,
                     band=emp.band,
                     skills_count=skills_count,
                     source="project",
@@ -138,6 +141,7 @@ async def get_direct_reports(
                     employee_id=local_emp.employee_id,
                     name=local_emp.name,
                     capability=local_emp.capability or local_emp.home_capability,
+                    pathway=local_emp.pathway,
                     band=local_emp.band,
                     skills_count=skills_count,
                     source="hrms"
@@ -150,6 +154,7 @@ async def get_direct_reports(
                     employee_id=emp_id,
                     name=emp_name,
                     capability=hrms_emp.get("capability"),
+                    pathway=hrms_emp.get("pathway"),
                     band=hrms_emp.get("band"),
                     skills_count=0,
                     source="hrms"
@@ -351,6 +356,58 @@ async def debug_manager_info(
         result["issues"].append(f"HRMS error: {type(e).__name__}: {str(e)}")
     
     return result
+
+
+@router.post("/assign-direct-report")
+async def assign_direct_report(
+    employee_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """
+    Assign an employee as a direct report to the current manager.
+    This sets the employee's line_manager_id to the current user's employee ID.
+    """
+    # Get manager from local DB
+    manager = None
+    if current_user.employee_id:
+        manager = db.query(Employee).filter(Employee.employee_id == current_user.employee_id).first()
+    
+    if not manager:
+        manager = db.query(Employee).filter(Employee.company_email == current_user.email).first()
+        if manager:
+            from app.db import crud
+            crud.update_user(db, current_user.id, {"employee_id": manager.employee_id})
+    
+    if not manager:
+        return {"success": False, "error": "Manager employee record not found"}
+    
+    # Find the employee to assign
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        return {"success": False, "error": f"Employee with ID {employee_id} not found"}
+    
+    # Assign the employee to this manager
+    old_manager_id = employee.line_manager_id
+    employee.line_manager_id = manager.id
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Assigned {employee.name} as direct report",
+        "employee": {
+            "id": employee.id,
+            "employee_id": employee.employee_id,
+            "name": employee.name,
+            "old_line_manager_id": old_manager_id,
+            "new_line_manager_id": manager.id
+        },
+        "manager": {
+            "id": manager.id,
+            "employee_id": manager.employee_id,
+            "name": manager.name
+        }
+    }
 
 
 @router.post("/sync-hrms-reports")

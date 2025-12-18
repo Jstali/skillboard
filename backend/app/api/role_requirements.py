@@ -360,20 +360,26 @@ def add_all_skills_to_pathways(
 ):
     """Add skills to career pathways with default requirements (admin only).
     
-    If pathway is provided, only adds skills from that pathway's category template.
+    If pathway is provided, adds skills that have that pathway field value,
+    or falls back to category template if no pathway field match.
     Otherwise, adds ALL skills.
     Skills are organized by their skill category.
     """
     # Get skills based on pathway filter
     if pathway:
-        # Get skills from the category template for this pathway
-        template_skills = (
-            db.query(Skill)
-            .join(CategorySkillTemplate, CategorySkillTemplate.skill_id == Skill.id)
-            .filter(CategorySkillTemplate.category == pathway)
-            .all()
-        )
-        all_skills = template_skills
+        # First try to get skills by pathway field
+        pathway_skills = db.query(Skill).filter(Skill.pathway == pathway).all()
+        
+        # If no skills found by pathway, try category template
+        if not pathway_skills:
+            pathway_skills = (
+                db.query(Skill)
+                .join(CategorySkillTemplate, CategorySkillTemplate.skill_id == Skill.id)
+                .filter(CategorySkillTemplate.category == pathway)
+                .all()
+            )
+        
+        all_skills = pathway_skills
     else:
         # Get all skills
         all_skills = db.query(Skill).all()
@@ -437,44 +443,70 @@ def get_pathways_list(
     db: Session = Depends(database.get_db),
     current_user: User = Depends(get_admin_user),
 ):
-    """Get list of all available pathways (employee categories) with skill counts."""
-    # Get all distinct categories from CategorySkillTemplate
+    """Get list of all available pathways with skill counts.
+    
+    Pathways are determined by the 'pathway' field on skills (e.g., Consulting, Technical).
+    Falls back to CategorySkillTemplate categories if no pathway field is set.
+    """
+    # Get all distinct pathways from Skills table
+    skill_pathways = [p[0] for p in db.query(Skill.pathway).filter(Skill.pathway.isnot(None)).distinct().all()]
+    
+    # Also get categories from CategorySkillTemplate as fallback
     template_categories = [c[0] for c in db.query(CategorySkillTemplate.category).distinct().all()]
     
-    # Get all distinct categories from Skills
-    skill_categories_list = [c[0] for c in db.query(Skill.category).filter(Skill.category.isnot(None)).distinct().all()]
-    
-    # Combine and deduplicate
-    all_categories = sorted(list(set(template_categories + skill_categories_list)))
+    # Combine: prefer pathways, add template categories that aren't already pathways
+    all_pathways = sorted(list(set(skill_pathways + template_categories)))
     
     result = []
-    for category in all_categories:
-        # Count total skills in this pathway (from skills table directly)
+    for pathway in all_pathways:
+        # Count total skills in this pathway
+        # First check if it's a pathway field match
         total_skills = (
             db.query(Skill)
-            .filter(Skill.category == category)
+            .filter(Skill.pathway == pathway)
             .count()
         )
+        
+        # If no skills found by pathway, check by category template
+        if total_skills == 0:
+            total_skills = (
+                db.query(Skill)
+                .join(CategorySkillTemplate, CategorySkillTemplate.skill_id == Skill.id)
+                .filter(CategorySkillTemplate.category == pathway)
+                .count()
+            )
         
         # Count skills already in role requirements
         skills_in_requirements = (
             db.query(RoleRequirement.skill_id)
             .join(Skill, Skill.id == RoleRequirement.skill_id)
-            .filter(Skill.category == category)
+            .filter((Skill.pathway == pathway) | (Skill.category == pathway))
             .distinct()
             .count()
         )
         
-        # Get skill categories within this pathway (sub-categories? or just self if flattened)
-        # Assuming for now pathway = category, so sub-categories might be redundant or same
+        # Get skill categories within this pathway
+        skill_categories = [
+            c[0] for c in db.query(Skill.category)
+            .filter(Skill.pathway == pathway)
+            .filter(Skill.category.isnot(None))
+            .distinct()
+            .all()
+        ]
+        
+        if not skill_categories:
+            skill_categories = [pathway]
         
         result.append({
-            "pathway": category,
+            "pathway": pathway,
             "total_skills": total_skills,
             "skills_in_requirements": skills_in_requirements,
             "skills_remaining": total_skills - skills_in_requirements,
-            "skill_categories": [category], # Currently pathway IS the category
+            "skill_categories": skill_categories,
         })
+    
+    # Filter out pathways with 0 skills
+    result = [r for r in result if r["total_skills"] > 0]
     
     return result
 
@@ -487,25 +519,96 @@ def get_pathway_skills(
 ):
     """Get skills for a specific pathway grouped by skill category.
     
-    Returns only skills that:
-    1. Belong to the pathway's category template
-    2. Have role requirements configured
+    Returns skills that:
+    1. Have the pathway field matching pathway_name, OR
+    2. Belong to the pathway's category template
+    3. Have role requirements configured
     """
-    # Get all skill IDs in this pathway's template
-    template_skill_ids = (
-        db.query(CategorySkillTemplate.skill_id)
-        .filter(CategorySkillTemplate.category == pathway_name)
-        .all()
-    )
-    template_skill_ids = [s[0] for s in template_skill_ids]
+    # First try to get skills by pathway field
+    pathway_skills = db.query(Skill).filter(Skill.pathway == pathway_name).all()
+    pathway_skill_ids = [s.id for s in pathway_skills]
     
-    if not template_skill_ids:
+    # If no skills found by pathway, try category template
+    if not pathway_skill_ids:
+        template_skill_ids = (
+            db.query(CategorySkillTemplate.skill_id)
+            .filter(CategorySkillTemplate.category == pathway_name)
+            .all()
+        )
+        pathway_skill_ids = [s[0] for s in template_skill_ids]
+    
+    if not pathway_skill_ids:
         return {}
     
     # Get role requirements for these skills
     requirements = (
         db.query(RoleRequirement)
-        .filter(RoleRequirement.skill_id.in_(template_skill_ids))
+        .filter(RoleRequirement.skill_id.in_(pathway_skill_ids))
+        .all()
+    )
+    
+    # Build a map of skill_id -> {band -> rating}
+    skill_requirements: Dict[int, Dict[str, str]] = defaultdict(dict)
+    for req in requirements:
+        skill_requirements[req.skill_id][req.band] = req.required_rating.value
+    
+    # Get skills that have requirements
+    skill_ids_with_requirements = list(skill_requirements.keys())
+    if not skill_ids_with_requirements:
+        return {}
+    
+    skills = db.query(Skill).filter(Skill.id.in_(skill_ids_with_requirements)).all()
+    
+    # Group by skill category
+    grouped: Dict[str, List[dict]] = defaultdict(list)
+    for skill in skills:
+        cat = skill.category or "Uncategorized"
+        grouped[cat].append({
+            "skill_id": skill.id,
+            "skill_name": skill.name,
+            "skill_category": skill.category,
+            "band_requirements": skill_requirements[skill.id],
+        })
+    
+    # Sort skills within each category
+    for cat in grouped:
+        grouped[cat].sort(key=lambda x: x["skill_name"])
+    
+    return dict(grouped)
+
+
+@router.get("/pathway/{pathway_name}/skills/public")
+def get_pathway_skills_public(
+    pathway_name: str,
+    db: Session = Depends(database.get_db),
+):
+    """Get skills for a specific pathway grouped by skill category (public endpoint for managers).
+    
+    Returns skills that:
+    1. Have the pathway field matching pathway_name, OR
+    2. Belong to the pathway's category template
+    3. Have role requirements configured
+    """
+    # First try to get skills by pathway field
+    pathway_skills = db.query(Skill).filter(Skill.pathway == pathway_name).all()
+    pathway_skill_ids = [s.id for s in pathway_skills]
+    
+    # If no skills found by pathway, try category template
+    if not pathway_skill_ids:
+        template_skill_ids = (
+            db.query(CategorySkillTemplate.skill_id)
+            .filter(CategorySkillTemplate.category == pathway_name)
+            .all()
+        )
+        pathway_skill_ids = [s[0] for s in template_skill_ids]
+    
+    if not pathway_skill_ids:
+        return {}
+    
+    # Get role requirements for these skills
+    requirements = (
+        db.query(RoleRequirement)
+        .filter(RoleRequirement.skill_id.in_(pathway_skill_ids))
         .all()
     )
     

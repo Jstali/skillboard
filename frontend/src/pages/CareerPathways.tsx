@@ -44,7 +44,8 @@ export const CareerPathways: React.FC<CareerPathwaysProps> = ({ isEmbedded = fal
   const [showAddSkill, setShowAddSkill] = useState(false);
   const [showCreatePathway, setShowCreatePathway] = useState(false);
   const [newPathwayName, setNewPathwayName] = useState('');
-  const [selectedSkillToAdd, setSelectedSkillToAdd] = useState<number | null>(null);
+  const [newSkillName, setNewSkillName] = useState('');
+  const [newSkillCategory, setNewSkillCategory] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [addingAllSkills, setAddingAllSkills] = useState(false);
   const navigate = useNavigate();
@@ -169,15 +170,25 @@ export const CareerPathways: React.FC<CareerPathwaysProps> = ({ isEmbedded = fal
   };
 
   const handleAddSkill = async () => {
-    if (!selectedSkillToAdd) return;
+    // Create new skill
+    if (!newSkillName.trim()) return;
 
     setSaving(true);
     try {
-      // Pass the selectedPathway as the category to force update if needed
-      await roleRequirementsApi.addSkillToPathway(selectedSkillToAdd, selectedPathway);
-      setMessage({ type: 'success', text: 'Skill added to pathway' });
+      // Create the skill with the selected pathway
+      const newSkill = await skillsApi.create({
+        name: newSkillName.trim(),
+        category: newSkillCategory.trim() || undefined,
+        pathway: selectedPathway || undefined,
+      });
+      
+      // Add skill to pathway with default requirements
+      await roleRequirementsApi.addSkillToPathway(newSkill.id, selectedPathway);
+      setMessage({ type: 'success', text: `Created and added "${newSkillName.trim()}" to pathway` });
+      
       setShowAddSkill(false);
-      setSelectedSkillToAdd(null);
+      setNewSkillName('');
+      setNewSkillCategory('');
       await loadData();
       if (selectedPathway) {
         await loadPathwaySkills(selectedPathway);
@@ -680,35 +691,52 @@ export const CareerPathways: React.FC<CareerPathwaysProps> = ({ isEmbedded = fal
         </div>
       )}
 
-      {/* Add Skill Modal matching original code but outside verify block */}
+      {/* Add Skill Modal - create new skills */}
       {showAddSkill && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4">Add Skill to Career Pathways</h3>
+            <h3 className="text-lg font-semibold mb-2">Add New Skill</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Select a skill to add. Default requirements will be created (A=Beginner → L2+=Expert).
+              Create a new skill for the "{selectedPathway}" pathway. Default requirements will be created (A=Beginner → L2+=Expert).
             </p>
-            <div className="mb-4">
-              <SearchableSelect
-                options={availableSkills.map(skill => ({
-                  value: skill.id,
-                  label: `${skill.name} ${skill.category ? `(${skill.category})` : ''}`
-                }))}
-                value={selectedSkillToAdd}
-                onChange={(v) => setSelectedSkillToAdd(v as number)}
-                placeholder="Select a skill..."
-              />
+
+            {/* New Skill Form */}
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Skill Name *</label>
+                <input
+                  type="text"
+                  value={newSkillName}
+                  onChange={(e) => setNewSkillName(e.target.value)}
+                  placeholder="Enter skill name (e.g., Project Management)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  autoFocus
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <input
+                  type="text"
+                  value={newSkillCategory}
+                  onChange={(e) => setNewSkillCategory(e.target.value)}
+                  placeholder="Enter category (e.g., Leadership, Technical)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Optional - helps organize skills within the pathway</p>
+              </div>
             </div>
+
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => { setShowAddSkill(false); setSelectedSkillToAdd(null); }}
+                onClick={() => { setShowAddSkill(false); setNewSkillName(''); setNewSkillCategory(''); }}
                 className="px-4 py-2 text-gray-600 hover:text-gray-800"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddSkill}
-                disabled={!selectedSkillToAdd || saving}
+                disabled={!newSkillName.trim() || saving}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 {saving ? 'Adding...' : 'Add Skill'}

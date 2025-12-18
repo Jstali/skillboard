@@ -107,7 +107,11 @@ class FieldMapper:
         'month': 'month',
         'period': 'month',
         'is_primary': 'is_primary',
-        'primary': 'is_primary'
+        'primary': 'is_primary',
+        'line_manager_id': 'line_manager_id',
+        'manager_id': 'line_manager_id',
+        'supervisor_id': 'line_manager_id',
+        'reporting_manager': 'line_manager_id'
     }
     
     def __init__(self, custom_mappings: Optional[Dict[str, Dict[str, str]]] = None):
@@ -489,14 +493,20 @@ class HRMSImportService:
             raise
     
     async def _import_employees(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Import employee records."""
-        stats = {'processed': 0, 'created': 0, 'updated': 0, 'failed': 0, 'errors': []}
+        """Import employee records with band defaulting and line manager handling."""
+        stats = {'processed': 0, 'created': 0, 'updated': 0, 'failed': 0, 'errors': [], 'band_defaults_applied': 0}
         valid_records = 0
         
         for record in records:
             try:
                 # Map fields
                 mapped_data = self.field_mapper.map_employee_fields(record)
+                
+                # Default band to 'A' if not provided or empty
+                if not mapped_data.get('band'):
+                    mapped_data['band'] = 'A'
+                    stats['band_defaults_applied'] += 1
+                    logger.info(f"Applied default band 'A' for employee {mapped_data.get('employee_id')}")
                 
                 # Validate data
                 is_valid, errors = self.validation_engine.validate_employee_data(mapped_data)
@@ -517,10 +527,16 @@ class HRMSImportService:
                     for key, value in mapped_data.items():
                         if hasattr(existing_employee, key):
                             setattr(existing_employee, key, value)
+                    # Ensure band is set even for existing employees
+                    if not existing_employee.band:
+                        existing_employee.band = 'A'
+                        stats['band_defaults_applied'] += 1
                     existing_employee.hrms_last_sync = datetime.utcnow()
                     stats['updated'] += 1
                 else:
-                    # Create new employee
+                    # Create new employee with band defaulting
+                    if 'band' not in mapped_data or not mapped_data['band']:
+                        mapped_data['band'] = 'A'
                     new_employee = Employee(**mapped_data)
                     new_employee.hrms_last_sync = datetime.utcnow()
                     self.db.add(new_employee)
@@ -595,8 +611,8 @@ class HRMSImportService:
         return stats
     
     async def _import_assignments(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Import assignment records."""
-        stats = {'processed': 0, 'created': 0, 'updated': 0, 'failed': 0, 'errors': []}
+        """Import assignment records with line manager handling from project allocations."""
+        stats = {'processed': 0, 'created': 0, 'updated': 0, 'failed': 0, 'errors': [], 'line_managers_updated': 0}
         valid_records = 0
         
         for record in records:
@@ -632,6 +648,20 @@ class HRMSImportService:
                     stats['errors'].append(f"Project not found: {mapped_data['project_id']}")
                     continue
                 
+                # Pull line manager from project allocation if provided
+                line_manager_id_from_allocation = mapped_data.get('line_manager_id')
+                if line_manager_id_from_allocation:
+                    # Find the line manager employee
+                    line_manager = self.db.query(Employee).filter(
+                        Employee.employee_id == line_manager_id_from_allocation
+                    ).first()
+                    
+                    if line_manager and not employee.line_manager_id:
+                        # Update employee's line manager from project allocation
+                        employee.line_manager_id = line_manager.id
+                        stats['line_managers_updated'] += 1
+                        logger.info(f"Updated line manager for employee {employee.employee_id} from project allocation to {line_manager.employee_id}")
+                
                 # Check if assignment exists
                 existing_assignment = self.db.query(HRMSProjectAssignment).filter(
                     and_(
@@ -641,16 +671,19 @@ class HRMSImportService:
                     )
                 ).first()
                 
+                # Remove line_manager_id from assignment data (it's for employee, not assignment)
+                assignment_fields = {k: v for k, v in mapped_data.items() if k != 'line_manager_id'}
+                
                 if existing_assignment:
                     # Update existing assignment
-                    for key, value in mapped_data.items():
+                    for key, value in assignment_fields.items():
                         if key not in ['employee_id', 'project_id'] and hasattr(existing_assignment, key):
                             setattr(existing_assignment, key, value)
                     existing_assignment.hrms_last_sync = datetime.utcnow()
                     stats['updated'] += 1
                 else:
                     # Create new assignment
-                    assignment_data = mapped_data.copy()
+                    assignment_data = assignment_fields.copy()
                     assignment_data['employee_id'] = employee.id
                     assignment_data['project_id'] = project.id
                     

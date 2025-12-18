@@ -1,0 +1,55 @@
+skill_name,category,description
+Python,Programming,General-purpose programming language
+JavaScript,Programming,Web development programming language
+TypeScript,Programming,Typed superset of JavaScript
+Java,Programming,Object-oriented programming language
+C#,Programming,Microsoft .NET programming language
+Go,Programming,Google's systems programming language
+Rust,Programming,Memory-safe systems programming language
+SQL,Database,Structured Query Language for databases
+PostgreSQL,Database,Open-source relational database
+MySQL,Database,Popular open-source database
+MongoDB,Database,NoSQL document database
+Redis,Database,In-memory data structure store
+React,Frontend,JavaScript library for building UIs
+Angular,Frontend,TypeScript-based web framework
+Vue.js,Frontend,Progressive JavaScript framework
+HTML/CSS,Frontend,Web markup and styling
+Node.js,Backend,JavaScript runtime for server-side
+FastAPI,Backend,Modern Python web framework
+Django,Backend,Python web framework
+Spring Boot,Backend,Java-based framework
+Express.js,Backend,Node.js web framework
+AWS,Cloud,Amazon Web Services cloud platform
+Azure,Cloud,Microsoft cloud platform
+GCP,Cloud,Google Cloud Platform
+Kubernetes,Cloud,Container orchestration platform
+Docker,DevOps,Container platform
+Jenkins,DevOps,CI/CD automation server
+GitLab CI,DevOps,DevOps platform
+Terraform,DevOps,Infrastructure as code tool
+Ansible,DevOps,IT automation tool
+SAP ABAP,SAP,SAP programming language
+SAP S/4HANA,SAP,SAP ERP system
+SAP Fiori,SAP,SAP user experience
+SAP BW/4HANA,SAP,SAP data warehousing
+SAP Integration Suite,SAP,SAP integration platform
+Communication,Soft Skills,Verbal and written communication
+Leadership,Soft Skills,Team leadership and management
+Problem Solving,Soft Skills,Analytical thinking and problem resolution
+Time Management,Soft Skills,Prioritization and deadline management
+Teamwork,Soft Skills,Collaboration and team dynamics
+Presentation Skills,Soft Skills,Public speaking and presenting
+Negotiation,Soft Skills,Business negotiation skills
+Critical Thinking,Soft Skills,Analytical and logical reasoning
+Agile/Scrum,Project Management,Agile methodology and Scrum framework
+JIRA,Project Management,Project tracking tool
+Confluence,Project Management,Documentation and collaboration
+Risk Management,Project Management,Identifying and mitigating risks
+Stakeholder Management,Project Management,Managing stakeholder relationships
+Machine Learning,Data Science,ML algorithms and models
+Data Analysis,Data Science,Data exploration and analysis
+Python for Data Science,Data Science,Python libraries for data science
+TensorFlow,Data Science,Machine learning framework
+Power BI,Data Science,Business intelligence tool
+Tableau,Data Science,Data visualization platform

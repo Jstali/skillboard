@@ -14,44 +14,43 @@ router = APIRouter(prefix="/api/skills", tags=["skills"])
 def get_skills(
     skip: int = 0,
     limit: int = 100,
-    category: Optional[str] = None,  # Filter by category template
+    pathway: Optional[str] = None,  # Filter by pathway
     db: Session = Depends(database.get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
-    Get skills. If user is logged in and has a category, returns only skills from their category template.
-    If category parameter is provided, returns skills from that category template.
+    Get skills. If user is logged in and has a pathway, returns only skills from their pathway.
+    If pathway parameter is provided, returns skills from that pathway.
     Otherwise, returns all skills.
     """
     try:
-        # If user is logged in, try to get their category
-        employee_category = None
+        # If user is logged in, try to get their pathway
+        employee_pathway = None
         if current_user and current_user.employee_id:
             try:
                 employee = crud.get_employee_by_id(db, current_user.employee_id)
-                if employee and employee.category:
-                    employee_category = employee.category
+                if employee and employee.pathway:
+                    employee_pathway = employee.pathway
             except Exception as e:
                 # Log error but continue - don't fail the whole request
-                print(f"Error getting employee category: {e}")
+                print(f"Error getting employee pathway: {e}")
         
-        # Use provided category or employee's category
-        filter_category = category or employee_category
+        # Use provided pathway or employee's pathway
+        filter_pathway = pathway or employee_pathway
         
-        if filter_category:
-            # Get skills from category template
-            template_skills = (
-                db.query(CategorySkillTemplate, SkillModel)
-                .join(SkillModel, CategorySkillTemplate.skill_id == SkillModel.id)
-                .filter(CategorySkillTemplate.category == filter_category)
-                .order_by(CategorySkillTemplate.display_order.asc().nullslast(), SkillModel.name.asc())
+        if filter_pathway:
+            # Get skills that belong to this pathway
+            skills = (
+                db.query(SkillModel)
+                .filter(SkillModel.pathway == filter_pathway)
+                .order_by(SkillModel.category.asc().nullslast(), SkillModel.name.asc())
                 .offset(skip)
                 .limit(limit)
                 .all()
             )
-            return [skill for _, skill in template_skills]
+            return skills
         else:
-            # Return all skills if no category filter
+            # Return all skills if no pathway filter
             skills = crud.get_all_skills(db, skip=skip, limit=limit)
             return skills
     except Exception as e:
@@ -80,6 +79,93 @@ def get_all_skills_simple(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error fetching skills: {str(e)}")
+
+
+@router.get("/grouped")
+def get_skills_grouped_by_pathway(
+    db: Session = Depends(database.get_db),
+):
+    """
+    Get all skills grouped by pathway and category.
+    Returns: { pathway: { category: [skills] } }
+    """
+    try:
+        skills = db.query(SkillModel).order_by(
+            SkillModel.pathway.asc().nullslast(),
+            SkillModel.category.asc().nullslast(),
+            SkillModel.name.asc()
+        ).all()
+        
+        result = {}
+        for skill in skills:
+            pathway = skill.pathway or "Uncategorized"
+            category = skill.category or "General"
+            
+            if pathway not in result:
+                result[pathway] = {}
+            if category not in result[pathway]:
+                result[pathway][category] = []
+            
+            result[pathway][category].append({
+                "id": skill.id,
+                "name": skill.name,
+                "description": skill.description,
+                "pathway": skill.pathway,
+                "category": skill.category
+            })
+        
+        return result
+    except Exception as e:
+        print(f"Error in get_skills_grouped: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error fetching skills: {str(e)}")
+
+
+@router.get("/pathways")
+def get_pathways(
+    db: Session = Depends(database.get_db),
+):
+    """
+    Get list of all unique pathways with their categories and skill counts.
+    """
+    try:
+        from sqlalchemy import func
+        
+        # Get pathway -> category -> count
+        results = db.query(
+            SkillModel.pathway,
+            SkillModel.category,
+            func.count(SkillModel.id).label('skill_count')
+        ).group_by(
+            SkillModel.pathway,
+            SkillModel.category
+        ).order_by(
+            SkillModel.pathway.asc().nullslast(),
+            SkillModel.category.asc().nullslast()
+        ).all()
+        
+        pathways = {}
+        for pathway, category, count in results:
+            pathway_name = pathway or "Uncategorized"
+            category_name = category or "General"
+            
+            if pathway_name not in pathways:
+                pathways[pathway_name] = {
+                    "name": pathway_name,
+                    "categories": {},
+                    "total_skills": 0
+                }
+            
+            pathways[pathway_name]["categories"][category_name] = count
+            pathways[pathway_name]["total_skills"] += count
+        
+        return list(pathways.values())
+    except Exception as e:
+        print(f"Error in get_pathways: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error fetching pathways: {str(e)}")
 
 
 @router.get("/{skill_id}", response_model=Skill)

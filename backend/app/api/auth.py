@@ -128,6 +128,7 @@ def get_current_user_info(
         is_admin=current_user.is_admin,
         must_change_password=current_user.must_change_password,
         created_at=current_user.created_at,
+        role_id=current_user.role_id,
     )
 
 
